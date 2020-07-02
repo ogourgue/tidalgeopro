@@ -532,6 +532,7 @@ def downstream_distance(coords, sections, mls, mpol, dns, \
 
   # as long as the buffer array is not empty
   while len(buf) > 0:
+  #for i in range(1):
 
     # initialize list of connected sections
     con = []
@@ -545,7 +546,7 @@ def downstream_distance(coords, sections, mls, mpol, dns, \
       for n in [n0, n1]:
         ind = np.where(sections_new == n)
         for nc in ind[0]:
-          if nc != n:
+          if nc != s:
             con.append(nc)
 
     # convert list into array
