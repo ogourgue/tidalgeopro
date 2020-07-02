@@ -71,7 +71,8 @@ def virtual_dem(x, y, skl_coords, skl_dist):
 ################################################################################
 
 def metrics(x, y, skl_coords, skl_dist, mask = None, z = None, platforms = None,
-            tiff = 'vdem.tiff', remove_tiff = True, resolve_flats = True):
+            cov = None, tiff = 'vdem.tiff', remove_tiff = True,
+            resolve_flats = True):
 
   """ Calculate watershed areas, upstream mainstream lengths and mean watershed platform elevations along the skeleton of a tidal channel network.
 
@@ -151,6 +152,8 @@ def metrics(x, y, skl_coords, skl_dist, mask = None, z = None, platforms = None,
   grid_skl_upstream_length = np.zeros(grid_skl_coords.shape[0])
   if z is not None and platforms is not None:
     grid_skl_platform_elevation = np.zeros(grid_skl_coords.shape[0]) + np.nan
+  if cov is not None and platforms is not None:
+    grid_skl_platform_cover = np.zeros(grid_skl_coords.shape[0]) + np.nan
 
   # downstream length on the structured grid (nan values outside skeleton cells)
   grid_dist = np.zeros(vdem.shape) + np.nan
@@ -195,18 +198,32 @@ def metrics(x, y, skl_coords, skl_dist, mask = None, z = None, platforms = None,
 
     # mean watershed platform elevation
     if z is not None and platforms is not None:
-      if np.any(platforms * catch):
-        grid_skl_platform_elevation[i] = np.mean(z[platforms * catch])
+      if (np.any(platforms * catch) and
+          np.any(np.isfinite(z[platforms * catch]))):
+        grid_skl_platform_elevation[i] = np.nanmean(z[platforms * catch])
+
+    # mean watershed vegetation cover
+    if cov is not None and platforms is not None:
+      if (np.any(platforms * catch) and
+          np.any(np.isfinite(cov[platforms * catch]))):
+        grid_skl_platform_cover[i] = np.nanmean(cov[platforms * catch])
+
 
   # project variables on final skeleton
   skl_watershed_area = grid_skl_watershed_area[grid_skl_inverse]
   skl_upstream_length = grid_skl_upstream_length[grid_skl_inverse]
   if z is not None and platforms is not None:
     skl_platform_elevation = grid_skl_platform_elevation[grid_skl_inverse]
+  if cov is not None and platforms is not None:
+    skl_platform_cover = grid_skl_platform_cover[grid_skl_inverse]
 
-  if z is None or platforms is None:
-    return skl_watershed_area, skl_upstream_length
-  else:
-    return skl_watershed_area, skl_upstream_length, skl_platform_elevation
+  # list of outputs (depends on inputs)
+  output = [skl_watershed_area, skl_upstream_length]
+  if z is not None and platforms is not None:
+    output.append(skl_platform_elevation)
+  if cov is not None and platforms is not None:
+    output.append(skl_platform_cover)
+
+  return output
 
 
