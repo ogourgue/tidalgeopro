@@ -447,10 +447,11 @@ def final_skeleton(coords, sections, mls, mpol, dns, dx = 1):
       if len(points) > 1:
         lss_new.append(geometry.LineString(points))
       else:
-        lss_new.append(geometry.LineString())
+        #lss_new.append(geometry.LineString())
         if not already_printed:
           print('')
           print('warning: some empty line strings in final skeleton')
+          print('multilinestring skeleton is not consistent with skeleton data')
           print('')
           already_printed = True
 
@@ -532,7 +533,6 @@ def downstream_distance(coords, sections, mls, mpol, dns, \
 
   # as long as the buffer array is not empty
   while len(buf) > 0:
-  #for i in range(1):
 
     # initialize list of connected sections
     con = []

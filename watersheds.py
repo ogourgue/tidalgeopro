@@ -8,9 +8,9 @@ Author: Olivier Gourgue
 """
 
 
-import gdal
 import numpy as np
-import osr
+import osgeo.gdal as gdal
+import osgeo.osr as osr
 
 # pysheds-0.2.7
 from pysheds.grid import Grid
