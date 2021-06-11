@@ -227,3 +227,84 @@ def metrics(x, y, skl_coords, skl_dist, mask = None, z = None, platforms = None,
   return output
 
 
+################################################################################
+# watershed metrics (experimental alternative without virtual dem) #############
+################################################################################
+
+def metrics2(x, y, mask, skl_node_dist, skl_node_sections, skl_coords, skl_dist,
+             skl_sections):
+
+    # Grid cell surface area.
+    ds = (x[1] - x[0]) * (y[1] - y[0])
+
+    # Skeleton point coordinates.
+    skl_x = skl_coords[:, 0]
+    skl_y = skl_coords[:, 1]
+
+    # Calculate watershed strip area (i.e., surface area corresponding to grid
+    # cells closer to one give skeleton point).
+    skl_wsa = np.zeros(skl_coords.shape[0])
+    for i in range(len(x)):
+        for j in range(len(y)):
+            if not mask[i, j]:
+                # Square distance to skeleton points.
+                d2 = (x[i] - skl_x) ** 2 + (y[j] - skl_y) ** 2
+                # Index of minimum distance.
+                skl_wsa[np.argmin(d2)] += ds
+
+    # Calculate local watershed area (i.e., watershed area per skeleton section)
+    # on skeleton nodes.
+    skl_node_lwa = np.zeros(skl_node_dist.shape)
+    for i in range(len(skl_node_sections)):
+        # Only non-empty sections.
+        if np.sum(skl_sections == i) > 0:
+            # Skeleton section point indices.
+            ind = (skl_sections == i)
+            # Downstream node: local watershed area is the sum of watershed
+            # strip area of all skeleton section points. The result is cumulated
+            # at confluence points.
+            skl_node_lwa[skl_node_sections[i, 0]] += np.sum(skl_wsa[ind])
+            # Upstream node (if channel head): local watershed area is watershed
+            # strip area of most upstream skeleton section point.
+            if np.sum(skl_node_sections == skl_node_sections[i, 1]) == 1:
+                skl_node_lwa[skl_node_sections[i, 1]] = skl_wsa[ind][-1]
+
+    # Calculate metrics on skeleton nodes.
+    # Initialize watershed area to local watershed area.
+    skl_node_wa = skl_node_lwa
+    # Initialize upstream length to zero.
+    skl_node_ul = np.zeros(skl_node_dist.shape)
+    # Loop over skeleton sections in decreasing order of their upstream node
+    # downstream length.
+    for i in np.argsort(-skl_node_dist[skl_node_sections[:, 1]]):
+        # If not a channel head, propagate upstream watershed area downstream.
+        if np.sum(skl_node_sections == skl_node_sections[i, 1]) > 1:
+            skl_node_wa[skl_node_sections[i, 0]] += \
+                skl_node_wa[skl_node_sections[i, 1]]
+        # Propagate upstream length downstream.
+        ul = skl_node_ul[skl_node_sections[i, 1]] \
+           + skl_node_dist[skl_node_sections[i, 1]] \
+           - skl_node_dist[skl_node_sections[i, 0]]
+        if ul > skl_node_ul[skl_node_sections[i, 0]]:
+            skl_node_ul[skl_node_sections[i, 0]] = ul
+
+    # Calculate metrics on skeleton points.
+    skl_wa = np.zeros(skl_coords.shape[0])
+    skl_ul = np.zeros(skl_coords.shape[0])
+    for i in np.unique(skl_sections):
+        # Skeleton point indices (upstream to downstream).
+        points = np.flip(np.argwhere(skl_sections == i)[:, 0])
+        for j in range(len(points)):
+            skl_wa[points[j]] = skl_node_wa[skl_node_sections[i, 1]] \
+                              + np.sum(skl_wsa[points[:j]])
+            skl_ul[points[j]] = skl_node_ul[skl_node_sections[i, 1]] \
+                              + skl_node_dist[skl_node_sections[i, 1]] \
+                              - skl_dist[points[j]]
+
+
+    return skl_wa, skl_ul
+
+
+
+
+
