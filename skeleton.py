@@ -43,7 +43,7 @@ def raw_skeleton(mpol):
   # compute a list of raw skeletons (one for each polygon)
   skls = []
   for pol in mpol.geoms:
-    skls.append(centerline.geometry.Centerline(pol))
+    skls.append(ops.linemerge(centerline.geometry.Centerline(pol)))
 
   # print time
   print('raw skeleton computed in %.2f seconds' % (time.time() - start))
