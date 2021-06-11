@@ -33,6 +33,10 @@ def raw_skeleton(mpol):
   print('')
   print('computing the raw skeleton can be a long process...')
 
+  # if mpol is a polygon, convert into multipolygon
+  if mpol.geom_type == 'Polygon':
+    mpol = geometry.MultiPolygon([mpol])
+
   # start timer
   start = time.time()
 
@@ -45,8 +49,12 @@ def raw_skeleton(mpol):
   print('raw skeleton computed in %.2f seconds' % (time.time() - start))
   print('')
 
-  # return list of raw skeletons
-  return skls
+  # return raw skeleton or list of raw skeletons
+  if len(skls) == 1:
+    return skls[0]
+  else:
+    return skls
+
 
 
 
@@ -76,6 +84,14 @@ def clean_skeleton(skls, mpol, ratio = 1):
   print('')
   print('cleaning the raw skeleton can be a long process...')
 
+  # if skls is not a list, convert into list
+  if type(skls) != list:
+    skls = [skls]
+
+  # if mpol is a polygon, convert into multipolygon
+  if mpol.geom_type == 'Polygon':
+    mpol = geometry.MultiPolygon([mpol])
+
   # start timer
   start = time.time()
 
@@ -98,6 +114,8 @@ def clean_skeleton(skls, mpol, ratio = 1):
         else:
           sp.append(coords.index(coord))
       sps.append(sp)
+
+  print(sps)
 
   # convert list into array
   coords = np.array(coords)
@@ -326,8 +344,11 @@ def clean_skeleton(skls, mpol, ratio = 1):
   print('clean skeleton computed in %.2f seconds' % (time.time() - start))
   print('')
 
-  # return
-  return coords, sections, mls, mpol
+  # return (channel edges as multipolygon or polygon if only 1 polygon)
+  if len(pols) == 1:
+    return coords, sections, mls, pols[0]
+  else:
+    return coords, sections, mls, mpol
 
 
 
@@ -362,6 +383,14 @@ def final_skeleton(coords, sections, mls, mpol, dns, dx = 1):
   MultiPolygon describing the final channel edges
 
   """
+
+  # if dns is an integer, convert into list
+  if type(dns) != list:
+    dns = [dns]
+
+  # if mpol is a polygon, convert into multipolygon
+  if mpol.geom_type == 'Polygon':
+    mpol = geometry.MultiPolygon([mpol])
 
 
   ##########################################################################
@@ -473,7 +502,11 @@ def final_skeleton(coords, sections, mls, mpol, dns, dx = 1):
         break
   mpol = geometry.MultiPolygon(pols)
 
-  return coords, dist, sections, mls, p_coords, p_dist, p_sections, mpol
+  # return (channel edges as multipolygon or polygon if only 1 polygon)
+  if len(pols) == 1:
+    return coords, dist, sections, mls, p_coords, p_dist, p_sections, pols[0]
+  else:
+    return coords, dist, sections, mls, p_coords, p_dist, p_sections, mpol
 
 
 
