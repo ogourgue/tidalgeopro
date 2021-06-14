@@ -228,6 +228,11 @@ def final_skeleton(skls, mpol, mls, dx = 1):
         node_sections[i, 1] = n1
 
     # Downstream node indices.
+    dn = []
+    for ls in mls:
+        p = shp.ops.nearest_points(skl, ls)[0]
+        dn.append(int(np.argwhere(np.all(node_xy == p.coords, axis = 1))))
+
 
     # Compute downstream length at skeleton nodes and reorganize skeleton.
     """node_dl, node_xy, node_sexctions, skl = donwstream_length(node_xy, node_sexctions, skl, dn)"""
