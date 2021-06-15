@@ -192,7 +192,7 @@ def final_skeleton(skls, mpol, mls, dx = 1):
                         lss0.append(skl.geoms[k])
                 skl0 = shp.geometry.MultiLineString(lss0)
                 # Split downstream channel section.
-                split_lss = shp.ops.split(skl, dls)
+                split_lss = shp.ops.split(ls, dls)
                 # Keep split channel section connected to the remaining
                 # skeleton.
                 for split_ls in split_lss:
@@ -210,17 +210,21 @@ def final_skeleton(skls, mpol, mls, dx = 1):
             lss.append(ls)
     skl = shp.geometry.MultiLineString(lss)
 
+    # Convert skeleton MultiLineString into a list of LineStrings (so we can
+    # more easily reverse the order of points).
+    lss = list(skl.geoms)
+
     # Skeleton node coordinates.
     node_xy = []
-    for ls in skl.geoms:
+    for ls in lss:
         for coords in [ls.coords[0], ls.coords[-1]]:
             if coords not in node_xy:
                 node_xy.append(coords)
     node_xy = np.array(node_xy)
 
     # Skeleton section connectivity table.
-    node_sections = np.zeros((len(skl.geoms), 2), dtype = int)
-    for i in range(len(skl.geoms)):
+    node_sections = np.zeros((len(lss), 2), dtype = int)
+    for i in range(len(lss)):
         ls = skl.geoms[i]
         n0 = int(np.argwhere(np.all(node_xy == ls.coords[0], axis = 1)))
         n1 = int(np.argwhere(np.all(node_xy == ls.coords[-1], axis = 1)))
@@ -228,35 +232,223 @@ def final_skeleton(skls, mpol, mls, dx = 1):
         node_sections[i, 1] = n1
 
     # Downstream node indices.
-    dn = []
+    dns = []
     for ls in mls:
         p = shp.ops.nearest_points(skl, ls)[0]
-        dn.append(int(np.argwhere(np.all(node_xy == p.coords, axis = 1))))
-
+        dns.append(int(np.argwhere(np.all(node_xy == p.coords, axis = 1))))
 
     # Compute downstream length at skeleton nodes and reorganize skeleton.
-    """node_dl, node_xy, node_sexctions, skl = donwstream_length(node_xy, node_sexctions, skl, dn)"""
+    (node_xy,
+     node_sections,
+     node_dl,
+     lss) = donwstream_length(node_xy, node_sections, lss, dns)
 
-    # Compute final skeleton.
+    # Compute final skeleton by (i) removing channel sections and skeleton nodes
+    # that have not been connected to the main skeleton, and (ii) redefining
+    # skeleton points at regular distance from each other.
 
-    return node_xy, node_sections, skl
+    # Initialize lists.
+    node_xy_new = []
+    node_sections_new = []
+    node_dl_new = []
+    skl_xy = []
+    skl_sections = []
+    skl_dl = []
+    lss_new = []
+
+    # Loop over old channel sections.
+    for s in range(len(lss)):
+        # Old node indices and corresponding downstream lengths.
+        n0 = node_sections[s, 0]
+        n1 = node_sections[s, 1]
+        node_dl0 = node_dl[n0]
+        node_dl1 = node_dl[n1]
+        # Only keep channel sections connected to the main skeleton.
+        if np.isfinite(node_dl0) and np.isfinite(node_dl1):
+
+            # Update node lists by removing channel sections and skeleton nodes
+            # that have not been connected to the main skeleton.
+
+            # Update node lists for first node.
+            node_xy0 = list(node_xy[n0, :])
+            if node_xy0 in node_xy_new:
+                node_sections_new.append([node_xy_new.index(node_xy0)])
+            else:
+                node_xy_new.append(node_xy0)
+                node_sections_new.append([len(node_xy_new) - 1])
+                node_dl_new.append(node_dl0)
+            # Update node lists for last node.
+            node_xy1 = list(node_xy[n1, :])
+            if node_xy1 in node_xy_new:
+                node_sections_new[-1].append(node_xy_new.index(node_xy1))
+            else:
+                node_xy_new.append(node_xy1)
+                node_sections_new[-1].append(len(node_xy_new) - 1)
+                node_dl_new.append(node_dl1)
+
+            # Redefine skeleton points at regular distance from each other.
+
+            # Downstream length at extreme regular points of the channel
+            # section.
+            skl_dl_loc_0 = np.ceil(node_dl0 / dx) * dx
+            skl_dl_loc_1 = np.floor(node_dl1 / dx) * dx
+            # Update regular skeleton point coordinates, sections and downstream
+            # lengths.
+            for skl_dl_loc in np.arange(skl_dl_loc_0, skl_dl_loc_1 + dx, dx):
+                point = lss[s].interpolate(skl_dl_loc - node_dl0)
+                skl_xy.append([point.x, point.y])
+                skl_dl.append(skl_dl_loc)
+                skl_sections.append(len(node_sections_new) - 1)
+
+    # Convert lists into arrays.
+    node_xy = np.array(node_xy_new)
+    node_sections = np.array(node_sections_new)
+    node_dl = np.array(node_dl_new)
+    skl_xy = np.array(skl_xy)
+    skl_sections = np.array(skl_sections)
+    skl_dl = np.array(skl_dl)
+
+    return node_xy, node_sections, node_dl, skl_xy, skl_sections, skl_dl
 
 
 ################################################################################
 # Downstream length. ###########################################################
 ################################################################################
 
-def donwstream_length(node_xy, node_sexctions, skl, dn):
+def donwstream_length(node_xy, node_sections, lss, dns):
 
-    # For the future docstring.
-    # Compute downstream length at skeleton nodes and reorganize skeleton so
-    # that (i) channel sections are oriented from downstream to
-    # upstream and (ii) channel sections are split at maximum downstream length.
+    # Initialize buffer list with downstream section indices.
+    buf = []
+    for dn in dns:
+        buf.append(np.argwhere(node_sections == dn).reshape(-1)[0])
 
+    # Channel section lengths.
+    lens = np.zeros(node_sections.shape[0])
+    for i in range(lens.shape[0]):
+        lens[i] = lss[i].length
 
+    # Initialize downstream length at skeleton nodes.
+    node_dl = np.zeros(node_xy.shape[0]) + np.inf
+    # Loop over channel sections in the buffer list.
+    for i in range(len(buf)):
+        # Section index.
+        s = buf[i]
+        # Downstream node index.
+        nd = dns[i]
+        # Upstream node index.
+        if nd == node_sections[s, 0]:
+            nu = node_sections[s, 1]
+        else:
+            nu = node_sections[s, 0]
+        # Update downstream length at channel section nodes.
+        node_dl[nd] = 0
+        node_dl[nu] = lens[s]
+        # Update channel section and LineString orientation.
+        if nd != node_sections[s, 0]:
+            node_sections[s, 0] = nd
+            node_sections[s, 1] = nu
+            ls_coords = list(lss[s].coords)
+            ls_coords.reverse()
+            lss[s] = shp.geometry.LineString(ls_coords)
 
+    # Loop as long as the buffer list is not empty.
+    while len(buf) > 0:
+        # Initialize list of connected channel sections.
+        con = []
+        # Loop over channel sections in the buffer list.
+        for s in buf:
+            # Channel section nodes.
+            n0 = node_sections[s, 0]
+            n1 = node_sections[s, 1]
+            # Look for connected channel sections.
+            for n in [n0, n1]:
+                ind = list(np.argwhere(node_sections == n)[:, 0])
+                for nc in ind:
+                    if nc != s:
+                        con.append(nc)
+        # Reset buffer list.
+        buf = []
+        # Loop over connected channel sections.
+        for s in con:
+            # Channel section nodes.
+            n0 = node_sections[s, 0]
+            n1 = node_sections[s, 1]
+            # If downstream length at channel section nodes is lower than
+            # previous value, update value and add channel section to buffer
+            # list.
+            node_dl0 = node_dl[n1] + lens[s]
+            node_dl1 = node_dl[n0] + lens[s]
+            if node_dl0 < node_dl[n0]:
+                node_dl[n0] = node_dl0
+                buf.append(s)
+            if node_dl1 < node_dl[n1]:
+                node_dl[n1] = node_dl1
+                buf.append(s)
+            # If downstream length if higher at downstream nodes vs. upstream
+            # nodes, update channel section and LineString orientation.
+            for s in range(node_sections.shape[0]):
+                n0 = node_sections[s, 0]
+                n1 = node_sections[s, 1]
+                node_dl0 = node_dl[n0]
+                node_dl1 = node_dl[n1]
+                if node_dl1 < node_dl0:
+                    node_sections[s, 0] = n1
+                    node_sections[s, 1] = n0
+                    ls_coords = list(lss[s].coords)
+                    ls_coords.reverse()
+                    lss[s] = shp.geometry.LineString(ls_coords)
 
-    # Loop over tidal channel networks.
-    for i in range(len(skls)):
-        # Channel network skeleton.
-        skl = skls[i]
+    # Split channel sections at maximum downstream length.
+    # Initialize list of channel sections to delete.
+    trash = []
+    # Loop over channel sections.
+    for s in range(node_sections.shape[0]):
+        # Channel section nodes.
+        n0 = node_sections[s][0]
+        n1 = node_sections[s][1]
+        # Test if channel section length is higher than the difference between
+        # upstream length at channel section nodes.
+        if lens[s] - np.abs(node_dl[n1] - node_dl[n0]) > 1e-6:
+            # Maximum downstream length on that channel section and
+            # corresponding skeleton point.
+            dl_max = .5 * (lens[s] + node_dl[n0] + node_dl[n1])
+            p_max = lss[s].interpolate(dl_max - node_dl[n0])
+            n_max = node_xy.shape[0]
+            # Split LineString at point of maximum downstream length.
+            # Loop over channel section points.
+            for i in range(len(lss[s].coords)):
+                # Channel section point.
+                pi = shp.geometry.Point(lss[s].coords[i])
+                # Case of split point exactly on a channel section point.
+                if lss[s].project(pi) == dl_max - node_dl[n0]:
+                    node_xy = np.append(node_xy, [[p_max.x, p_max.y]], axis = 0)
+                    node_dl = np.append(node_dl, dl_max)
+                    node_sections = np.append(node_sections, [[n0, n_max]],
+                                              axis = 0)
+                    node_sections = np.append(node_sections, [[n1, n_max]],
+                                              axis = 0)
+                    lss.append(shp.geometry.LineString(lss[s].coords[:i + 1]))
+                    lss.append(shp.geometry.LineString(lss[s].coords[i:]))
+                    trash.append(s)
+                    break
+                # Case of split point between two channel section points.
+                if lss[s].project(pi) > dl_max - node_dl[n0]:
+                    node_xy = np.append(node_xy, [[p_max.x, p_max.y]], axis = 0)
+                    node_dl = np.append(node_dl, dl_max)
+                    node_sections = np.append(node_sections, [[n0, n_max]],
+                                              axis = 0)
+                    node_sections = np.append(node_sections, [[n1, n_max]],
+                                              axis = 0)
+                    lss.append(shp.geometry.LineString(lss[s].coords[:i] +
+                                                       [(p_max.x, p_max.y)]))
+                    lss.append(shp.geometry.LineString([(p_max.x, p_max.y)] +
+                                                       lss[s].coords[i:]))
+                    trash.append(s)
+                    break
+    # Delete original split channel sections.
+    trash.reverse()
+    for s in trash:
+        node_sections = np.delete(node_sections, s, axis = 0)
+        del lss[s]
+
+    return node_xy, node_sections, node_dl, lss
