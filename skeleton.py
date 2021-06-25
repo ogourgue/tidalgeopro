@@ -143,6 +143,8 @@ def clean_skeleton(skls, mpol, ratio = 1):
 def final_skeleton(skls, mpol, mls, dx, zero = 1e-3, smin = 0):
 
     # Split skeletons at downstream LineStrings.
+    # Initialize number of splits.
+    n = np.zeros(len(skls))
     # Loop over skeletons.
     for i in range(len(skls)):
         # Skeleton.
@@ -161,12 +163,50 @@ def final_skeleton(skls, mpol, mls, dx, zero = 1e-3, smin = 0):
                 split_lss = shp.ops.split(ls, dls)
                 for split_ls in split_lss:
                     lss0.append(split_ls)
+                n[i] += 1
             else:
                 # Add non-split LineString to split skeleton.
                 lss0.append(ls)
         # Update skeleton.
         skls[i] = shp.geometry.MultiLineString(lss0)
 
+    # For skeletons that cannot be split, add channel sections between 
+    # nearest points of skeleton MultiLineStrings and downstream LineStrings.
+    for i in range(len(skls)):
+        if n[i] == 0:
+            # Skeleton.
+            skl = skls[i]
+            # Initialize split skeleton as empty list of LineStrings.
+            lss0 = []
+            # Downstream LineString.
+            dls = mls.geoms[i]
+            # Additional channel section.
+            p0, p1 = shp.ops.nearest_points(skl, dls)
+            lss0.append(shp.geometry.LineString([p0, p1]))
+            # Loop over channel sections.
+            for j in range(len(skl.geoms)):
+                # Channel section.
+                ls = skl.geoms[j]
+                # Test if channel section touches additional channel section.
+                if ls.distance(lss0[0]) < zero:
+                    # Distance to connection along channel section.
+                    if ls.distance(p0) < ls.distance(p1):
+                        d0 = ls.project(p0)
+                    else:
+                        d0 = ls.project(p1)
+                    # Find corresponding channel section point, split channel
+                    # section in two LineStrings and add them to split skeleton.
+                    for k in range(len(ls.coords)):
+                        d = ls.project(shp.geometry.Point(ls.coords[k]))
+                        if d == d0:
+                             lss0.append(shp.geometry.LineString(ls.coords[:k+1]))
+                             lss0.append(shp.geometry.LineString(ls.coords[k:]))
+                else:
+                    # Add non-split LineString to split skeleton.
+                    lss0.append(ls)
+            # Update skeleton.
+            skls[i] = shp.geometry.MultiLineString(lss0)
+ 
     # Remove channel sections downstream the downstream LineString and merge
     # skeletons into one MultiLineString.
     # Initialize list of channel sections.
@@ -210,10 +250,10 @@ def final_skeleton(skls, mpol, mls, dx, zero = 1e-3, smin = 0):
                 # Test if split polygon is connected to the others.
                 if not np.all(intersect):
                     pols1.append(polj)
-        # Keep the channel sections inside split channel network polygons.
+        # Keep the channel sections inside split channel network Polygons.
         for ls in skl.geoms:
             for pol1 in pols1:
-                # Test if channel section is within channel network polygon.
+                # Test if channel section is within channel network Polygon.
                 if ls.within(pol1):
                     lss.append(ls)
                 # If not, it might be the most downstream channel with the
@@ -330,6 +370,24 @@ def final_skeleton(skls, mpol, mls, dx, zero = 1e-3, smin = 0):
     skl_dl = np.array(skl_dl)
 
     return node_xy, node_sections, node_dl, skl_xy, skl_sections, skl_dl
+
+
+def cut(line, distance):
+    # Cuts a line in two at a distance from its starting point
+    if distance <= 0.0 or distance >= line.length:
+        return [LineString(line)]
+    coords = list(line.coords)
+    for i, p in enumerate(coords):
+        pd = line.project(shp.geometry.Point(p))
+        if pd == distance:
+            return [
+                shp.geometry.LineString(coords[:i+1]),
+                shp.geometry.LineString(coords[i:])]
+        if pd > distance:
+            cp = line.interpolate(distance)
+            return [
+                shp.geometry.LineString(coords[:i] + [(cp.x, cp.y)]),
+                shp.geometry.LineString([(cp.x, cp.y)] + coords[i:])]
 
 
 ################################################################################
