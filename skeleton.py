@@ -371,25 +371,6 @@ def final_skeleton(skls, mpol, mls, dx, zero = 1e-3, smin = 0):
 
     return node_xy, node_sections, node_dl, skl_xy, skl_sections, skl_dl
 
-
-def cut(line, distance):
-    # Cuts a line in two at a distance from its starting point
-    if distance <= 0.0 or distance >= line.length:
-        return [LineString(line)]
-    coords = list(line.coords)
-    for i, p in enumerate(coords):
-        pd = line.project(shp.geometry.Point(p))
-        if pd == distance:
-            return [
-                shp.geometry.LineString(coords[:i+1]),
-                shp.geometry.LineString(coords[i:])]
-        if pd > distance:
-            cp = line.interpolate(distance)
-            return [
-                shp.geometry.LineString(coords[:i] + [(cp.x, cp.y)]),
-                shp.geometry.LineString([(cp.x, cp.y)] + coords[i:])]
-
-
 ################################################################################
 # Downstream length. ###########################################################
 ################################################################################
