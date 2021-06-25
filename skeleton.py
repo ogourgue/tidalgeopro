@@ -42,6 +42,11 @@ def raw_skeleton(mpol):
     for pol in mpol.geoms:
         skls.append(shp.ops.linemerge(centerline.geometry.Centerline(pol)))
 
+    # Convert raw skeletons into MultiLineStrings if necessary.
+    for i in range(len(skls)):
+        if skls[i].type == 'LineString':
+            skls[i] = shp.geometry.MultiLineString([skls[i]])
+
     # Print time.
     print('Raw skeleton computed in %.2f seconds.' % (time.time() - start))
     print('')
