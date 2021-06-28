@@ -170,7 +170,7 @@ def final_skeleton(skls, mpol, mls, dx, zero = 1e-3, smin = 0):
         # Update skeleton.
         skls[i] = shp.geometry.MultiLineString(lss0)
 
-    # For skeletons that cannot be split, add channel sections between 
+    # For skeletons that cannot be split, add channel sections between
     # nearest points of skeleton MultiLineStrings and downstream LineStrings.
     for i in range(len(skls)):
         if n[i] == 0:
@@ -199,14 +199,14 @@ def final_skeleton(skls, mpol, mls, dx, zero = 1e-3, smin = 0):
                     for k in range(len(ls.coords)):
                         d = ls.project(shp.geometry.Point(ls.coords[k]))
                         if d == d0:
-                             lss0.append(shp.geometry.LineString(ls.coords[:k+1]))
-                             lss0.append(shp.geometry.LineString(ls.coords[k:]))
+                           lss0.append(shp.geometry.LineString(ls.coords[:k+1]))
+                           lss0.append(shp.geometry.LineString(ls.coords[k:]))
                 else:
                     # Add non-split LineString to split skeleton.
                     lss0.append(ls)
             # Update skeleton.
             skls[i] = shp.geometry.MultiLineString(lss0)
- 
+
     # Remove channel sections downstream the downstream LineString and merge
     # skeletons into one MultiLineString.
     # Initialize list of channel sections.
@@ -260,7 +260,12 @@ def final_skeleton(skls, mpol, mls, dx, zero = 1e-3, smin = 0):
                 # downstream node slightly outside the channel network polygon
                 # due to rounding errors.
                 else:
-                    # Check which node is upstream and test if it is within the
+                    # Check if middle point is within the channel network
+                    # polygon.
+                    p = ls.interpolate(.5, normalized = True)
+                    if p.within(pol1):
+                        lss.append(ls)
+                    """# Check which node is upstream and test if it is within the
                     # channel network polygon.
                     x, y = ls.xy
                     p0 = shp.geometry.Point((x[0], y[0]))
@@ -270,7 +275,7 @@ def final_skeleton(skls, mpol, mls, dx, zero = 1e-3, smin = 0):
                             lss.append(ls)
                     else:
                         if p1.within(pol1):
-                            lss.append(ls)
+                            lss.append(ls)"""
 
     # Skeleton node coordinates.
     node_xy = []
