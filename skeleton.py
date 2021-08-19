@@ -140,142 +140,90 @@ def clean_skeleton(skls, mpol, ratio = 1):
 # Final skeleton. ##############################################################
 ################################################################################
 
-def final_skeleton(skls, mpol, mls, dx, zero = 1e-3, smin = 0):
+def final_skeleton(skls, mpol, ls, dx, buf = 1e-6):
 
-    # Split skeletons at downstream LineStrings.
-    # Initialize number of splits.
-    n = np.zeros(len(skls))
-    # Loop over skeletons.
-    for i in range(len(skls)):
-        # Skeleton.
-        skl = skls[i]
-        # Initialize split skeleton as empty list of LineStrings.
-        lss0 = []
-        # Downstream LineString.
-        dls = mls.geoms[i]
-        # Loop over channel sections.
-        for j in range(len(skl.geoms)):
-            # Channel section.
-            ls = skl.geoms[j]
-            # Test if channel section can be split by downstream LineString.
-            if ls.crosses(dls):
-                # Split LineString and add split LineStrings to split skeleton.
-                split_lss = shp.ops.split(ls, dls)
-                for split_ls in split_lss:
-                    lss0.append(split_ls)
-                n[i] += 1
-            else:
-                # Add non-split LineString to split skeleton.
-                lss0.append(ls)
-        # Update skeleton.
-        skls[i] = shp.geometry.MultiLineString(lss0)
+    # Intersection between downstream LineString and channel network
+    # MultiPolygon. Buffering is needed due to rounding errors if downstream
+    # LineString is on the channel network MultiPolygon boundary.
+    dmls = ls.intersection(mpol.buffer(buf))
+    if dmls.type == 'LineString':
+        dmls = shp.geometry.MultiLineString([dmls])
 
-    # For skeletons that cannot be split, add channel sections between
-    # nearest points of skeleton MultiLineStrings and downstream LineStrings.
-    for i in range(len(skls)):
-        if n[i] == 0:
-            # Skeleton.
-            skl = skls[i]
-            # Initialize split skeleton as empty list of LineStrings.
-            lss0 = []
-            # Downstream LineString.
-            dls = mls.geoms[i]
-            # Additional channel section.
-            p0, p1 = shp.ops.nearest_points(skl, dls)
-            lss0.append(shp.geometry.LineString([p0, p1]))
-            # Loop over channel sections.
-            for j in range(len(skl.geoms)):
-                # Channel section.
-                ls = skl.geoms[j]
-                # Test if channel section touches additional channel section.
-                if ls.distance(lss0[0]) < zero:
-                    # Distance to connection along channel section.
-                    if ls.distance(p0) < ls.distance(p1):
-                        d0 = ls.project(p0)
-                    else:
-                        d0 = ls.project(p1)
-                    # Find corresponding channel section point, split channel
-                    # section in two LineStrings and add them to split skeleton.
-                    for k in range(len(ls.coords)):
-                        d = ls.project(shp.geometry.Point(ls.coords[k]))
-                        if d == d0:
-                           lss0.append(shp.geometry.LineString(ls.coords[:k+1]))
-                           lss0.append(shp.geometry.LineString(ls.coords[k:]))
-                else:
-                    # Add non-split LineString to split skeleton.
-                    lss0.append(ls)
-            # Update skeleton.
-            skls[i] = shp.geometry.MultiLineString(lss0)
-
-    # Remove channel sections downstream the downstream LineString and merge
-    # skeletons into one MultiLineString.
-    # Initialize list of channel sections.
+    # Merge skeletons into one list of LineStrings.
     lss = []
-    # Loop over skeletons.
-    for i in range(len(skls)):
-        # Skeleton.
-        skl = skls[i]
-        # Channel network Polygon.
-        pol = mpol.geoms[i]
-        # Initialize split channel network polygons as empty list of polygons.
-        pols0 = [] # Polygons with channel sections removed.
-        pols1 = [] # Open water Polygon removed.
-        # Downstream LineString.
-        dls = mls.geoms[i]
-        # Split channel network polygon.
-        split_pols = shp.ops.split(pol, dls)
-        # Remove split polygons with no channel section inside and smaller than
-        # the minimum surface area.
-        for split_pol in split_pols.geoms:
-            if split_pol.area > smin:
-                for ls in skl.geoms:
-                    if ls.intersects(split_pol):
-                        pols0.append(split_pol)
-                        break
-        # In case of 2 remaining Polygons, keep only the largest one.
-        if len(pols0) == 2:
-            if pols0[0].area > pols0[1].area:
-                pols1.append(pols0[0])
-            else:
-                pols1.append(pols0[1])
-        # In case of more than 2 remaining Polygons, remove the polygon that
-        # intersects all the other ones (open water).
-        else:
-            for j in range(len(pols0)):
-                intersect = np.zeros(len(pols0), dtype = bool)
-                polj = pols0[j]
-                for k in range(len(pols0)):
-                    polk = pols0[k]
-                    intersect[k] = polj.intersects(polk)
-                # Test if split polygon is connected to the others.
-                if not np.all(intersect):
-                    pols1.append(polj)
-        # Keep the channel sections inside split channel network Polygons.
+    for skl in skls:
         for ls in skl.geoms:
-            for pol1 in pols1:
-                # Test if channel section is within channel network Polygon.
-                if ls.within(pol1):
+            lss.append(ls)
+
+    # Connect skeleton with downstream LineStrings and determine downstream node
+    # indices.
+    for dls in dmls:
+        # Distance between skeleton sections and downstream LineStrings.
+        d = np.zeros(len(lss))
+        for i, ls in enumerate(lss):
+            d[i] = ls.distance(dls)
+        # Indexes sorted by increasing distance.
+        ind = np.argsort(d)
+        # Loop over sorted skeleton sections.
+        for i in ind:
+            # Test if one of the section nodes is as close to the downstream
+            # LineStrings than the skeleton section itself. If yes, the
+            # candidate downstream section is directly connected to that node.
+            # If no, the candidate downstream section is connected to a middle
+            # point. Test if the candidate downstream section is entirely within
+            # the channel network MultiPolygon (buffering is needed).
+
+            # Skeleton section nodes and their distance to the downstream
+            # LineString.
+            p0 = shp.geometry.Point(lss[i].coords[0])
+            p1 = shp.geometry.Point(lss[i].coords[-1])
+            d0 = p0.distance(dls)
+            d1 = p1.distance(dls)
+            # Connection to first node.
+            if d0 == d[i]:
+                p2 = dls.interpolate(dls.project(p0))
+                ls = shp.geometry.LineString([p0, p2])
+                if ls.within(mpol.buffer(buf)):
                     lss.append(ls)
-                # If not, it might be the most downstream channel with the
-                # downstream node slightly outside the channel network polygon
-                # due to rounding errors.
-                else:
-                    # Check if middle point is within the channel network
-                    # polygon.
-                    p = ls.interpolate(.5, normalized = True)
-                    if p.within(pol1):
-                        lss.append(ls)
-                    """# Check which node is upstream and test if it is within the
-                    # channel network polygon.
-                    x, y = ls.xy
-                    p0 = shp.geometry.Point((x[0], y[0]))
-                    p1 = shp.geometry.Point((x[-1], y[-1]))
-                    if p0.distance(dls) > p1.distance(dls):
-                        if p0.within(pol1):
-                            lss.append(ls)
-                    else:
-                        if p1.within(pol1):
-                            lss.append(ls)"""
+                    break
+            # Connection to second node.
+            elif d1 == d[i]:
+                p2 = dls.interpolate(dls.project(p1))
+                ls = shp.geometry.LineString([p1, p2])
+                if ls.within(mpol.buffer(buf)):
+                    lss.append(ls)
+                    break
+            # Connection to a middle point.
+            else:
+                p2, p3 = shp.ops.nearest_points(dls, lss[i])
+                #p2 = dls.interpolate(.5, normalized = True)
+                #p3 = lss[i].interpolate(lss[i].project(p2))
+                ls = shp.geometry.LineString([p3, p2])
+                if ls.within(mpol.buffer(buf)):
+                    lss.append(ls)
+                    # Split skeleton section in two.
+                    # Loop over channel section points.
+                    for j in range(len(lss[i].coords)):
+                        # Channel section point.
+                        pj = shp.geometry.Point(lss[i].coords[j])
+                        # Case of split point exactly on a section point.
+                        if lss[i].project(pj) == lss[i].project(p3):
+                            lss.append(
+                                shp.geometry.LineString(lss[i].coords[:j + 1]))
+                            lss.append(
+                                shp.geometry.LineString(lss[i].coords[j:]))
+                            break
+                        # Case of split point between two section points.
+                        if lss[i].project(pj) > lss[i].project(p3):
+                            lss.append(
+                                shp.geometry.LineString(lss[i].coords[:j] +
+                                                        [(p3.x, p3.y)]))
+                            lss.append(
+                                shp.geometry.LineString([(p3.x, p3.y)] +
+                                                        lss[i].coords[j:]))
+                            break
+                    del lss[i]
+                    break
 
     # Skeleton node coordinates.
     node_xy = []
@@ -287,8 +235,7 @@ def final_skeleton(skls, mpol, mls, dx, zero = 1e-3, smin = 0):
 
     # Skeleton section connectivity table.
     node_sections = np.zeros((len(lss), 2), dtype = int)
-    for i in range(len(lss)):
-        ls = lss[i]
+    for i, ls in enumerate(lss):
         n0 = int(np.argwhere(np.all(node_xy == ls.coords[0], axis = 1)))
         n1 = int(np.argwhere(np.all(node_xy == ls.coords[-1], axis = 1)))
         node_sections[i, 0] = n0
@@ -298,9 +245,9 @@ def final_skeleton(skls, mpol, mls, dx, zero = 1e-3, smin = 0):
     dns = []
     for i in range(node_xy.shape[0]):
         # Test if distance between channel section node and downstream
-        # LineString is zero (taking rounding errors into account).
+        # LineString is zero.
         x, y = node_xy[i, :]
-        if shp.geometry.Point((x, y)).distance(dls) < zero:
+        if shp.geometry.Point((x, y)).distance(dmls) < buf:
             dns.append(i)
 
     # Compute downstream length at skeleton nodes and reorganize skeleton.
