@@ -88,9 +88,9 @@ def boolean_channels(x, y, z, hc, radius = None, cloud_fn = None, \
   # initialize boolean channel
   if combine_radius_logical:
     if combine_time_logical:
-      channel = np.zeros(nnode)
+      channel = np.zeros(nnode, dtype = bool)
     else:
-      channel = np.zeros(z.shape)
+      channel = np.zeros(z.shape, dtype = bool)
   else:
     channel = []
 
@@ -219,10 +219,10 @@ def boolean_channels(x, y, z, hc, radius = None, cloud_fn = None, \
     else:
       channel.append(tmp_1 + tmp_2)
 
-
+  # I think this is not correct, so I comment it. Further check is needed.
   # no list if only one variable
-  if nr == 1:
-    channel = channel[0]
+  # if nr == 1:
+  #   channel = channel[0]
 
   # return boolean channel
   return channel
@@ -292,7 +292,7 @@ def mini_cloud(x, y, tri):
 ################################################################################
 
 
-def mini_cloud_radius(x, y, r, nmax = None):
+def mini_cloud_radius(x, y, r, nmax = np.inf):
 
   """ Compute mini-cloud of each point of a point cloud, as the list of all neighboring points in a certain radius
 
@@ -343,7 +343,7 @@ def mini_cloud_radius(x, y, r, nmax = None):
     j = np.array(np.argwhere(tmp_j).reshape(-1), dtype = dtype)
 
     # random selection if too many nodes in the mini-cloud
-    if len(j) > nmax and nmax is not None:
+    if len(j) > nmax:
       j = j[np.random.randint(0, len(j), nmax)]
 
     # add node indices to mini-cloud
