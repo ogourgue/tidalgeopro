@@ -343,8 +343,9 @@ def mini_cloud_radius(x, y, r, nmax = None):
     j = np.array(np.argwhere(tmp_j).reshape(-1), dtype = dtype)
 
     # random selection if too many nodes in the mini-cloud
-    if len(j) > nmax and nmax is not None:
-      j = j[np.random.randint(0, len(j), nmax)]
+    if nmax is not None:
+      if len(j) > nmax:
+        j = j[np.random.randint(0, len(j), nmax)]
 
     # add node indices to mini-cloud
     cloud[i] = j
