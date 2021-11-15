@@ -6,6 +6,9 @@ Author: Olivier Gourgue (University of Antwerp & Boston University)
 
 """
 
+import matplotlib
+matplotlib.use('Agg')
+
 import matplotlib.path as pth
 import matplotlib.pyplot as plt
 import numpy as np
@@ -219,14 +222,16 @@ def channels(z_res, z_res_c):
 
     Args:
         z_res (list of NumPy arrays): Median residuals for different
-            neighborhood radius.
+            neighborhood radius, for one (1D arrays) or several time steps (2D
+            arrays, second dimension for time).
         z_res_c (float or list of floats): Threshold median residual above
             which a node is considered as part of a channel (one threshold value
             for each neighborhood radius; the same threshold value is applied
             for all neighborhood radius if only one is provided).
 
     Returns:
-        NumPy array (boolean): True for channel nodes, False otherwise.
+        NumPy array (boolean): True for channel nodes, False otherwise (same
+            shape as z_res arrays).
     """
 
     # Reshape z_res_c, if needed.
@@ -254,64 +259,84 @@ def channel_polygons(x, y, tri, chn, sc = 0):
         x, y (NumPy arrays): Node coordinates.
         tri (NumPy array): For each triangle, the indices of the three points
             that make up the triangle, ordered in an anticlockwise manner.
-        chn (NumPy array, boolean): True for channel nodes, False otherwise.
+        chn (NumPy array, boolean): True for channel nodes, False otherwise, for
+            one (1D array) or several time steps (2D array, second dimension for
+            time).
         sc (float): Threshold polygon surface area, below which polygons are
             disregarded (default to 0).
 
     Returns:
-        MultiPolygon: Channel network polygons.
+        MultiPolygon (one time step) or list of MultiPolygons (several time
+            steps): Channel network polygons.
     """
 
-    # Channel contours.
-    TriContourSet = plt.tricontour(x, y, tri, chn.astype(int), levels = [.5])
+    # Reshape chn as a 2D array, if needed.
+    if chn.ndim == 1:
+        chn = chn.reshape((-1, 1))
 
-    # Convert to polygons.
-    pols = []
-    for contour_path in TriContourSet.collections[0].get_paths():
-        xy = contour_path.vertices
-        coords = []
-        for i in range(xy.shape[0]):
-            coords.append((xy[i, 0], xy[i, 1]))
-        pols.append(geometry.Polygon(coords))
+    # Number of time steps.
+    nt = z.shape[1]
 
-    # Sort polygons by surface areas.
-    s = [pol.area for pol in pols]
-    inds = np.flip(np.argsort(s))
-    pols = [pols[ind] for ind in inds]
+    # Initialize list of channel network MultiPolygons.
+    mpol = []
 
-    # Remove polygons with surface area smaller than smin.
-    s = [pol.area for pol in pols]
-    for i in range(len(s)):
-        if s[i] <= sc:
-            pols = pols[:i]
-            break
+    # Loop over time step.
+    for i in range(nt):
 
-    # Insert interiors one by one (to avoid inserting interiors of interiors).
-    stop_while = False
-    while not stop_while:
-        stop_for = False
-        for i in range(1, len(pols)):
-            for j in range(i):
-                if pols[i].within(pols[j]):
-                    # Update polygon j with interior i.
-                    shell = pols[j].exterior.coords
-                    holes = []
-                    for k in range(len(pols[j].interiors)):
-                        holes.append(pols[j].interiors[k].coords)
-                    holes.append(pols[i].exterior.coords)
-                    pols[j] = geometry.Polygon(shell = shell, holes = holes)
-                    # Delete polygon i.
-                    del pols[i]
-                    # Stop double for-loop.
-                    stop_for = True
-                    break
-            if stop_for:
+        # Channel contours.
+        chn_int = chn[:, i].astype(int)
+        TriContourSet = plt.tricontour(x, y, tri, chn_int, levels = [.5])
+
+        # Convert to polygons.
+        pols = []
+        for contour_path in TriContourSet.collections[0].get_paths():
+            xy = contour_path.vertices
+            coords = []
+            for j in range(xy.shape[0]):
+                coords.append((xy[j, 0], xy[j, 1]))
+            pols.append(geometry.Polygon(coords))
+
+        # Sort polygons by surface areas.
+        s = [pol.area for pol in pols]
+        inds = np.flip(np.argsort(s))
+        pols = [pols[ind] for ind in inds]
+
+        # Remove polygons with surface area smaller than smin.
+        s = [pol.area for pol in pols]
+        for j in range(len(s)):
+            if s[j] <= sc:
+                pols = pols[:j]
                 break
-        # Stop while-loop.
-        if i == len(pols) - 1 and j == i - 1:
-            stop_while = True
 
-    return geometry.MultiPolygon(pols)
+        # Insert interiors one by one to avoid inserting interiors of interiors.
+        stop_while = False
+        while not stop_while:
+            stop_for = False
+            for j in range(1, len(pols)):
+                for k in range(j):
+                    if pols[j].within(pols[k]):
+                        # Update polygon k with interior j.
+                        shell = pols[k].exterior.coords
+                        holes = []
+                        for kk in range(len(pols[k].interiors)):
+                            holes.append(pols[k].interiors[kk].coords)
+                        holes.append(pols[j].exterior.coords)
+                        pols[k] = geometry.Polygon(shell = shell, holes = holes)
+                        # Delete polygon j.
+                        del pols[j]
+                        # Stop double for-loop.
+                        stop_for = True
+                        break
+                if stop_for:
+                    break
+            # Stop while-loop.
+            if j == len(pols) - 1 and k == j - 1:
+                stop_while = True
+
+        # Update list of channel network MultiPolygons.
+        mpol.append(geometry.MultiPolygon(pols))
+
+    return mpol
 
 
 ################################################################################
