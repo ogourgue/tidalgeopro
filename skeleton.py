@@ -157,7 +157,7 @@ def final_skeleton(skls, mpol, ls, dx, buf = 1e-6):
 
     # Connect skeleton with downstream LineStrings and determine downstream node
     # indices.
-    for dls in dmls:
+    for dls in dmls.geoms:
         # Distance between skeleton sections and downstream LineStrings.
         d = np.zeros(len(lss))
         for i, ls in enumerate(lss):
