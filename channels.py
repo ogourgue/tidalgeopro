@@ -275,7 +275,7 @@ def channel_polygons(x, y, tri, chn, sc = 0):
         chn = chn.reshape((-1, 1))
 
     # Number of time steps.
-    nt = z.shape[1]
+    nt = chn.shape[1]
 
     # Initialize list of channel network MultiPolygons.
     mpol = []
@@ -283,58 +283,71 @@ def channel_polygons(x, y, tri, chn, sc = 0):
     # Loop over time step.
     for i in range(nt):
 
-        # Channel contours.
-        chn_int = chn[:, i].astype(int)
-        TriContourSet = plt.tricontour(x, y, tri, chn_int, levels = [.5])
-
-        # Convert to polygons.
+        # Initialize list of polygons.
         pols = []
-        for contour_path in TriContourSet.collections[0].get_paths():
-            xy = contour_path.vertices
-            coords = []
-            for j in range(xy.shape[0]):
-                coords.append((xy[j, 0], xy[j, 1]))
-            pols.append(geometry.Polygon(coords))
 
-        # Sort polygons by surface areas.
-        s = [pol.area for pol in pols]
-        inds = np.flip(np.argsort(s))
-        pols = [pols[ind] for ind in inds]
+        # Only compute channel contours if there are channel nodes.
+        if np.any(chn[:, i]):
 
-        # Remove polygons with surface area smaller than smin.
-        s = [pol.area for pol in pols]
-        for j in range(len(s)):
-            if s[j] <= sc:
-                pols = pols[:j]
-                break
+            # Channel contours.
+            chn_int = chn[:, i].astype(int)
+            TriContourSet = plt.tricontour(x, y, tri, chn_int, levels = [.5])
 
-        # Insert interiors one by one to avoid inserting interiors of interiors.
-        stop_while = False
-        while not stop_while:
-            stop_for = False
-            for j in range(1, len(pols)):
-                for k in range(j):
-                    if pols[j].within(pols[k]):
-                        # Update polygon k with interior j.
-                        shell = pols[k].exterior.coords
-                        holes = []
-                        for kk in range(len(pols[k].interiors)):
-                            holes.append(pols[k].interiors[kk].coords)
-                        holes.append(pols[j].exterior.coords)
-                        pols[k] = geometry.Polygon(shell = shell, holes = holes)
-                        # Delete polygon j.
-                        del pols[j]
-                        # Stop double for-loop.
-                        stop_for = True
-                        break
-                if stop_for:
+            # Convert to polygons.
+            for contour_path in TriContourSet.collections[0].get_paths():
+                xy = contour_path.vertices
+                coords = []
+                for j in range(xy.shape[0]):
+                    coords.append((xy[j, 0], xy[j, 1]))
+                pols.append(geometry.Polygon(coords))
+
+            # Sort polygons by surface areas.
+            s = [pol.area for pol in pols]
+            inds = np.flip(np.argsort(s))
+            pols = [pols[ind] for ind in inds]
+
+            # Remove polygons with surface area smaller than smin.
+            s = [pol.area for pol in pols]
+            for j in range(len(s)):
+                if s[j] <= sc:
+                    pols = pols[:j]
                     break
-            # Stop while-loop.
-            if j == len(pols) - 1 and k == j - 1:
+
+            # Insert interiors one by one to avoid inserting interior interiors.
+            if len(pols) == 0:
                 stop_while = True
+            else:
+                stop_while = False
+            while not stop_while:
+                stop_for = False
+                for j in range(1, len(pols)):
+                    for k in range(j):
+                        if pols[j].within(pols[k]):
+                            # Update polygon k with interior j.
+                            shell = pols[k].exterior.coords
+                            holes = []
+                            for kk in range(len(pols[k].interiors)):
+                                holes.append(pols[k].interiors[kk].coords)
+                            holes.append(pols[j].exterior.coords)
+                            pols[k] = geometry.Polygon(shell = shell,
+                                                       holes = holes)
+                            # Delete polygon j.
+                            del pols[j]
+                            # Stop double for-loop.
+                            stop_for = True
+                            break
+                    if stop_for:
+                        break
+                # Stop while-loop.
+                if j == len(pols) - 1 and k == j - 1:
+                    stop_while = True
 
         # Update list of channel network MultiPolygons.
         mpol.append(geometry.MultiPolygon(pols))
+
+    # Convert mpol into MultiPolygon, if needed.
+    if nt == 1:
+        mpol = mpol[0]
 
     return mpol
 
@@ -348,33 +361,63 @@ def nodes_in_channel_polygons(x, y, mpol):
 
     Args:
         x, y (NumPy arrays): Node coordinates.
-        mpol (MultiPolygon): Channel network polygons.
+        mpol (MultiPolygon or list of MultiPolygons): Channel network polygons. Multipolygon if one time step, list of MultiPolygons if several time
+            steps.
 
     Returns:
-        NumPy array (boolean): True for channel nodes, False otherwise.
+        NumPy array (boolean): True for channel nodes, False otherwise. 1D array if one time step, 2D array (second dimension for time) if several
+            time steps.
     """
 
-    # Convert MultiPolygon into list of Matplotlib paths.
-    paths = []
-    for pol in mpol.geoms:
-        vertices = np.zeros((len(pol.exterior.coords) + 1, 2))
-        vertices[:-1, :] = np.array(pol.exterior.coords)
-        vertices[-1, :] = vertices[0, :]
-        paths.append(pth.Path(vertices, closed = True))
+    # Convert mpol into list, if needed.
+    if type(mpol) != list:
+        mpol = [mpol]
 
     # Number of nodes.
     n = x.shape[0]
+
+    # Number of time steps.
+    nt = len(mpol)
 
     # Node array.
     nodes = np.zeros((n, 2))
     nodes[:, 0] = x
     nodes[:, 1] = y
 
-    # Check if nodes are insides any Polygon.
-    chn = np.zeros(n, dtype = bool)
-    for path in paths:
-        chn = np.logical_or(chn, path.contains_points(nodes))
+    # Initialize channel array.
+    chn = np.zeros((n, nt), dtype = bool)
+
+    # Loop over time steps.
+    for i in range(nt):
+
+        # Convert MultiPolygon exteriors into list of Matplotlib paths.
+        paths_ext = []
+        for pol in mpol[i].geoms:
+            vertices = np.zeros((len(pol.exterior.coords) + 1, 2))
+            vertices[:-1, :] = np.array(pol.exterior.coords)
+            vertices[-1, :] = vertices[0, :]
+            paths_ext.append(pth.Path(vertices, closed = True))
+
+        # Convert MultiPolygon interiors into list of Matplotlib paths.
+        paths_int = []
+        for pol in mpol[i].geoms:
+            for interior in pol.interiors:
+                vertices = np.zeros((len(interior.coords) + 1, 2))
+                vertices[:-1, :] = np.array(interior.coords)
+                vertices[-1, :] = vertices[0, :]
+                paths_int.append(pth.Path(vertices, closed = True))
+
+        # Nodes inside Polygon exteriors.
+        for path in paths_ext:
+            chn[:, i] = np.logical_or(chn[:, i], path.contains_points(nodes))
+
+        # Remove nodes inside Polygons interiors.
+        for path in paths_int:
+            ind = path.contains_points(nodes)
+            chn[ind, i] = False
+
+    # Reshape chn as a 1D array, if needed.
+    if nt == 1:
+        chn = chn.reshape(-1)
 
     return chn
-
-
