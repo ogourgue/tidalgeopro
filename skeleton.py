@@ -2,7 +2,7 @@
 
 Compute the skeleton of a tidal channel network.
 
-Author: Olivier Gourgue (University of Antwerp & Boston University)
+Author: Olivier Gourgue (University of Antwerp & Boston University).
 
 """
 
