@@ -141,6 +141,30 @@ def clean_skeleton(skls, mpol, ratio = 1):
 ################################################################################
 
 def final_skeleton(skls, mpol, ls, dx, buf = 1e-6):
+    """Process the clean skeleton and compute downstream length.
+
+    Skeleton nodes are network branching locations. Skeleton sections are
+        channel reaches between two node. Skeleton points are equal-distance
+        locations along the skeleton. The downstream length is the
+        along-skeleton distance between a certain location and the downstream
+        boundary.
+
+    Args:
+        skls (list of MultiLineStrings): Raw skeleton.
+        mpol (MultiPolygon): Tidal channel network.
+        ls (LineString): Downstream boundary.
+        dx (float): Distance between two points of the final skeleton.
+        buf (float): Buffer tolerance when evaluating zero distance (default to
+            1e-6).
+
+    Returns:
+        NumPy array: Skeleton node coordinates.
+        Numpy array: Skeleton section indices at skeleton nodes.
+        Numpy array: Downstream length at skeleton nodes.
+        NumPy array: Skeleton point coordinates.
+        NumPy array: Skeleton section indices at skeleton points.
+        Numpy array: Downstream length at skeleton points.
+    """
 
     # Intersection between downstream LineString and channel network
     # MultiPolygon. Buffering is needed due to rounding errors if downstream
@@ -328,6 +352,20 @@ def final_skeleton(skls, mpol, ls, dx, buf = 1e-6):
 ################################################################################
 
 def donwstream_length(node_xy, node_sections, lss, dns):
+    """Compute the downstream length and orient channel sections downstream.
+
+    Args:
+        node_xy (NumPy array): Skeleton node coordinates.
+        node_sections (Numpy array): Skeleton section indices at skeleton nodes.
+        lss (List of LineStrings): Skeleton sections.
+        dns (List of int): List of downstream skeleton section indices.
+
+    Returns:
+        NumPy array: Skeleton node coordinates.
+        Numpy array: Skeleton section indices at skeleton nodes.
+        Numpy array: Downstream length at skeleton nodes.
+        List of LineStrings: Skeleton sections.
+    """
 
     # Initialize buffer list with downstream section indices.
     buf = []
