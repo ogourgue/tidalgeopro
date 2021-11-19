@@ -1,62 +1,72 @@
-""" UPL: Unchanneled Path Length
+""" Unchanneled Path Length.
 
-This module allows to calculate the unchanneled path length in a watershed with a channel network
+Compute the unchanneled path length (UPL), i.e., the shortest distance to a
+    channel node.
 
-Author: Olivier Gourgue
-       (University of Antwerp, Belgium & Boston University, MA, United States)
+Author: Olivier Gourgue (University of Antwerp & Boston University).
 
 """
-
 
 import numpy as np
 from scipy import spatial
 
 
-
 ################################################################################
-# compute upl ##################################################################
+# Unchanneled path length. #####################################################
 ################################################################################
 
-def compute_upl(x, y, channel):
+def upl(x, y, chn, mask = None):
+    """Compute the unchanneled path length (UPL).
 
-  """ Compute the unchanneled path length from a boolean channel field
+    Args:
+        x, y (NumPy arrays): Node coordinates.
+        chn (NumPy array, boolean): True for channel nodes, False otherwise, for
+            one (1D array) or several time steps (2D array, second dimension for
+            time).
 
-  Required parameters:
-  x, y (NumPy arrays of shape (n)) grid node coordinates
-  channel (NumPy array of shape (n, m) and type logical): True if channel, False otherwise (m is number of time steps)
+    Returns:
+        NumPy array: Unchanneled path length (same shape as chn).
+    """
 
-  Returns:
-  NumPy array of shape (n, m): unchanneled path length
+    # Reshape chn as a 2D array, if needed.
+    if chn.ndim == 1:
+        chn = chn.reshape((-1, 1))
 
-  """
+    # Initialize.
+    upl = np.zeros(chn.shape)
 
-  # initialize
-  upl = np.zeros(channel.shape)
+    # Number of nodes.
+    n = chn.shape[0]
 
-  # case of one time step
-  if channel.ndim == 1:
-    channel = channel.reshape((channel.shape[0], 1))
-    upl = upl.reshape((upl.shape[0], 1))
+    # Number of time steps.
+    nt = chn.shape[1]
 
-  # for each time step
-  for i in range(channel.shape[1]):
+    # Default mask.
+    if mask is None:
+        mask = np.zeros((n, 1), dtype = bool)
 
-    # channel nodes
-    channel_ind = np.flatnonzero(channel[:, i])
-    channel_xy = np.array([x[channel_ind], y[channel_ind]]).T
+    # Area of interest.
+    not_mask = np.logical_not(mask)
 
-    # non-channel nodes
-    non_channel_ind = np.flatnonzero(channel[:, i] == 0)
-    non_channel_xy = np.array([x[non_channel_ind], y[non_channel_ind]]).T
+    # Loop over time steps.
+    for i in range(nt):
 
-    # unchanneled path length
-    if len(channel_ind) > 0:
-        tree = spatial.KDTree(channel_xy)
-        non_channel_upl, ind = tree.query(non_channel_xy)
-        upl[non_channel_ind, i] = non_channel_upl
+        # Channel node indices and coordinates.
+        ind_chn = np.flatnonzero(chn[:, i] * not_mask)
+        xy_chn = np.array([x[ind_chn], y[ind_chn]]).T
 
-  if upl.shape[1] == 1:
-    upl = upl.reshape((upl.shape[0]))
+        # Platform node indices and coordinates.
+        ind_plt = np.flatnonzero(np.logical_not(chn[:, i]) * not_mask)
+        xy_plt = np.array([x[ind_plt], y[ind_plt]]).T
 
-  # return
-  return upl
+        # UPL.
+        if len(ind_chn) > 0:
+            tree = spatial.KDTree(xy_chn)
+            upl_plt, ind = tree.query(xy_plt)
+            upl[ind_plt, i] = upl_plt
+
+    # Reshape as a 1D array, if needed.
+    if nt == 1:
+        upl = upl.reshape(-1)
+
+    return upl
