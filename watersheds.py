@@ -1,237 +1,69 @@
-""" Watersheds
+""" Watersheds.
 
-This module allows to compute watershed areas and upstream lengths along a tidal channel network skeleton
+Compute watershed area, maximum upstream length, and total upstream length along
+the skeleton of a tidal channel network.
 
-Author: Olivier Gourgue
-       (University of Antwerp, Belgium & Boston University, MA, United States)
+Author: Olivier Gourgue (University of Antwerp & Boston University)
 
 """
 
 
 import numpy as np
-import osgeo.gdal as gdal
-import osgeo.osr as osr
-
-# pysheds-0.2.7
-from pysheds.grid import Grid
-
-
 
 ################################################################################
-# virtual digital elevation model ##############################################
+# Watersheds. ##################################################################
 ################################################################################
 
-def virtual_dem(x, y, skl_coords, skl_dist):
+def watersheds(x, y, node_sections, node_dl, skl_xy, skl_sections, skl_dl,
+               mask = None, v = None):
+    """Compute watershed area, maximum and total upstream length along skeleton.
 
-  """ Calculate a virtual digital elevation model, as the distance to the skeleton + the downstream length along the skeleton.
+    Args:
+        x (NumPy array, shape (M)): Structured grid x-coordinates.
+        y (NumPy array, shape (N)): Structured grid y-coordinates.
+        node_sections (Numpy array): Skeleton section indices at skeleton nodes.
+        node_dl (Numpy array): Downstream length at skeleton nodes.
+        skl_xy (NumPy array): Skeleton point coordinates.
+        skl_sections (NumPy array): Skeleton section indices at skeleton points.
+        skl_dl (Numpy array): Downstream length at skeleton points.
+        mask (NumPy array, bool, shape (M, N)): True outside area of interest
+            (default to None, that is, False everywhere).
+        v (list of Numpy arrays, shape (M, N)): Variables to integrate along the
+            skeleton over the local watershed surface (default to None, that is,
+            no variable to integrate).
 
-  Required parameters:
-  x (Numpy array of shape (nx)): x-coordinates
-  y (Numpy array of shape (ny)): y-coordinates
-  skl_coords (Numpy array of shape (m, 2)): coordinates of the skeleton points
-  skl_dist (Numpy array of shape (m)): downstream length at each skeleton point
+    Returns:
+        NumPy array: Watershed surface area at skeleton points.
+        NumPy array: Maximum upstream length at skeleton points.
+        NumPy array: Total upstream length at skeleton points.
+        NumPy array: Optional variables integrated at skeleton points over the
+            local watershed surface (first 2 dimensions as v, third dimension for number of variables).
+    """
 
-  Returns:
-  Numpy array of shape (nx, ny): virtual DEM
-  Numpy array of shape (p, 2): unique skeleton points anchored on the structured grid
-  Numpy array of shape (m): connectivity table to retrieve the original skeleton point; i-th entry is the index of the corresponding unique anchored point
-  Numpy array of shape (p): downstream length at each unique skeleton points anchored on the structured grid
+    # Number of grid cells.
+    nx = x.shape[0]
+    ny = y.shape[0]
 
-  """
+    # Initialize mask, if needed.
+    if mask is None:
+        mask = np.zeros((nx, ny), dtype = bool)
 
-  # skeleton point coordinates anchored on the grid
-  grid_skl_coords = np.zeros(skl_coords.shape)
-  for i in range(skl_coords.shape[0]):
-    grid_skl_coords[i, 0] = x[np.argmin(np.abs(skl_coords[i, 0] - x))]
-    grid_skl_coords[i, 1] = y[np.argmin(np.abs(skl_coords[i, 1] - y))]
+    # Initialize v, if needed.
+    if v is None:
+        v = np.zeros((nx, ny, 0))
 
-  # remove duplicate points (grid_skl_coords_unique) and create connectivity
-  # table to retrieve original skeleton points (grid_skl_inverse)
-  (grid_skl_coords_unique,
-   grid_skl_inverse) = np.unique(grid_skl_coords, axis = 0,
-                                 return_inverse = True)
-  grid_skl_dist = np.zeros(grid_skl_coords_unique.shape[0])
-  for i in range(len(grid_skl_dist)):
-    grid_skl_dist[i] = np.max(skl_dist[grid_skl_inverse == i])
+    # Reshape v, if needed.
+    if v.ndim == 2:
+        v = v.reshape((nx, ny, 1))
 
-  # virtual dem
-  vdem = np.zeros((len(x), len(y)))
-  for i in range(len(x)):
-    for j in range(len(y)):
-      dist = ((x[i] - grid_skl_coords_unique[:, 0]) ** 2 +
-              (y[j] - grid_skl_coords_unique[:, 1]) ** 2) ** .5
-      vdem[i, j] = np.min(dist) + grid_skl_dist[np.argmin(dist)]
+    # Number of variables to integrate.
+    nv = v.shape[2]
 
-  return vdem, grid_skl_coords_unique, grid_skl_inverse, grid_skl_dist
+    # Number of skeleton nodes.
+    nn = node_dl.shape[0]
 
-
-
-################################################################################
-# watershed metrics ############################################################
-################################################################################
-
-def metrics(x, y, skl_coords, skl_dist, mask = None, z = None, platforms = None,
-            cov = None, tiff = 'vdem.tiff', remove_tiff = True,
-            resolve_flats = True):
-
-  """ Calculate watershed areas, upstream mainstream lengths and mean watershed platform elevations along the skeleton of a tidal channel network.
-
-  Required parameters:
-  x (Numpy array of shape (nx)): x-coordinates
-  y (Numpy array of shape (ny)): y-coordinates
-  skl_coords (Numpy array of shape (m, 2)): coordinates of the skeleton points
-  skl_dist (Numpy array of shape (m)): downstream length at each skeleton point
-
-  Optional parameters:
-  mask (Numpy array of shape(nx, ny), default = None): defines which grid cells are outside the domain of interest; if None, the domain of interest is the entire grid
-  z (Numpy array of shape(nx, ny), default = None): bottom elevation; if None, mean watershed platform elevation is not computed
-  platforms (Numpy array of shape(nx, ny), default = None): defines which grid cells are platforms; if None, mean watershed platform elevation is not computed
-  tiff (string, default = 'vdem.tiff'): geo tiff file name where the virtual DEM is stored before being imported by pysheds functions
-  remove_tiff (boolean, default = True): if True the geo tiff file is removed at the end of the calculation
-
-  Returns:
-  Numpy array of shape (m): watershed area along the skeleton
-  Numpy array of shape (m): upstream mainstream length along the skeleton
-  Numpy array of shape (m): mean watershed platform elevation along the skeleton (only if z and platforms are not None)
-
-  """
-
-  ###############
-  # virtual dem #
-  ###############
-
-  # compute virtual dem
-  (vdem,
-   grid_skl_coords,
-   grid_skl_inverse,
-   grid_skl_dist) = virtual_dem(x, y, skl_coords, skl_dist)
-
-
-  #############################################################
-  # save virtual dem into geo tiff file (required by pysheds) #
-  #############################################################
-
-  # from Python GDAL/OGR Cookbook 1.0 documentation: https://pcjericks.github.io/py-gdalogr-cookbook/raster_layers.html#create-raster-from-array
-
-  # grid data
-  x0 = x[0]
-  dx = x[1] - x[0]
-  y0 = y[0]
-  ny = len(y)
-
-  # coordinate system does not matter as long a x, y are projected coordinates
-  # (here: Belge 1972 / Belgian Lambert 72)
-  epsg = 31370
-
-  # save geo tiff
-  driver = gdal.GetDriverByName('GTiff')
-  outRaster = driver.Create(tiff, vdem.shape[0], vdem.shape[1], 1,
-                            gdal.GDT_Byte)
-  outRaster.SetGeoTransform((x0, dx, 0, y0 + (ny - 1) * dx, 0, -dx))
-  outband = outRaster.GetRasterBand(1)
-  outband.WriteArray(np.flipud(vdem.T))
-  outRasterSRS = osr.SpatialReference()
-  outRasterSRS.ImportFromEPSG(epsg)
-  outRaster.SetProjection(outRasterSRS.ExportToWkt())
-  outband.FlushCache()
-
-
-  ########################################
-  # watersheds and corresponding metrics #
-  ########################################
-
-  # read geo tiff
-  grid = Grid.from_raster(tiff, data_name = 'zero')
-
-  # add virtual dem manually (import geo tiff does not seem to work)
-  grid.add_gridded_data(data = np.flipud(vdem.T), data_name = 'vdem',
-                        affine = grid.affine, crs = grid.crs)
-
-  # initialize variables
-  grid_skl_watershed_area = np.zeros(grid_skl_coords.shape[0])
-  grid_skl_upstream_length = np.zeros(grid_skl_coords.shape[0])
-  if z is not None and platforms is not None:
-    grid_skl_platform_elevation = np.zeros(grid_skl_coords.shape[0]) + np.nan
-  if cov is not None and platforms is not None:
-    grid_skl_platform_cover = np.zeros(grid_skl_coords.shape[0]) + np.nan
-
-  # downstream length on the structured grid (nan values outside skeleton cells)
-  grid_dist = np.zeros(vdem.shape) + np.nan
-  for i in range(grid_skl_coords.shape[0]):
-    indx = np.argwhere(grid_skl_coords[i, 0] == x)[0]
-    indy = np.argwhere(grid_skl_coords[i, 1] == y)[0]
-    grid_dist[indx, indy] = grid_skl_dist[i]
-
-  # flow direction
-  if resolve_flats:
-    grid.resolve_flats(data = 'vdem', out_name = 'inflated_vdem')
-    grid.flowdir(data = 'inflated_vdem', out_name = 'dir', routing = 'dinf')
-  else:
-    grid.flowdir(data = 'vdem', out_name = 'dir', routing = 'dinf')
-
-  for i in range(grid_skl_coords.shape[0]):
-
-    # determine catchment
-    grid.catchment(data = 'dir', x = grid_skl_coords[i, 0],
-                   y = grid_skl_coords[i, 1], out_name = 'catch',
-                   recursionlimit = 15000, xytype = 'label', routing = 'dinf')
-
-    # convert to boolean array with index 'ij'
-    catch = np.array(grid.catch)
-    catch = (catch != 0)
-    catch = np.flipud(catch).T
-
-    # apply mask
-    catch[mask] = False
-
-    # force the pour point to be in the catchment
-    indx = np.argwhere(grid_skl_coords[i, 0] == x)[0]
-    indy = np.argwhere(grid_skl_coords[i, 1] == y)[0]
-    catch[indx, indy] = True
-
-    # watershed area
-    grid_skl_watershed_area[i] = np.sum(catch) * (dx ** 2)
-
-    # upstream mainstream length
-    grid_skl_upstream_length[i] = (np.nanmax(grid_dist[catch]) -
-                                   grid_skl_dist[i])
-
-    # mean watershed platform elevation
-    if z is not None and platforms is not None:
-      if (np.any(platforms * catch) and
-          np.any(np.isfinite(z[platforms * catch]))):
-        grid_skl_platform_elevation[i] = np.nanmean(z[platforms * catch])
-
-    # mean watershed vegetation cover
-    if cov is not None and platforms is not None:
-      if (np.any(platforms * catch) and
-          np.any(np.isfinite(cov[platforms * catch]))):
-        grid_skl_platform_cover[i] = np.nanmean(cov[platforms * catch])
-
-
-  # project variables on final skeleton
-  skl_watershed_area = grid_skl_watershed_area[grid_skl_inverse]
-  skl_upstream_length = grid_skl_upstream_length[grid_skl_inverse]
-  if z is not None and platforms is not None:
-    skl_platform_elevation = grid_skl_platform_elevation[grid_skl_inverse]
-  if cov is not None and platforms is not None:
-    skl_platform_cover = grid_skl_platform_cover[grid_skl_inverse]
-
-  # list of outputs (depends on inputs)
-  output = [skl_watershed_area, skl_upstream_length]
-  if z is not None and platforms is not None:
-    output.append(skl_platform_elevation)
-  if cov is not None and platforms is not None:
-    output.append(skl_platform_cover)
-
-  return output
-
-
-################################################################################
-# watershed metrics (experimental alternative without virtual dem) #############
-################################################################################
-
-def metrics2(x, y, mask, node_sections, node_dl, skl_xy, skl_sections, skl_dl):
+    # Number of skeleton points.
+    ns = skl_dl.shape[0]
 
     # Grid cell surface area.
     ds = (x[1] - x[0]) * (y[1] - y[0])
@@ -241,19 +73,23 @@ def metrics2(x, y, mask, node_sections, node_dl, skl_xy, skl_sections, skl_dl):
     skl_y = skl_xy[:, 1]
 
     # Calculate watershed strip area (i.e., surface area corresponding to grid
-    # cells closer to one give skeleton point).
-    skl_wsa = np.zeros(skl_xy.shape[0])
-    for i in range(len(x)):
-        for j in range(len(y)):
+    # cells closer to one give skeleton point) and watershed strip integrals.
+    skl_wsa = np.zeros(ns)
+    skl_wsi = np.zeros((ns, nv))
+    for i in range(nx):
+        for j in range(ny):
             if not mask[i, j]:
                 # Square distance to skeleton points.
                 d2 = (x[i] - skl_x) ** 2 + (y[j] - skl_y) ** 2
                 # Index of minimum distance.
                 skl_wsa[np.argmin(d2)] += ds
+                for k in range(nv):
+                    skl_wsi[np.argmin(d2), k] += v[i, j, k] * ds
 
     # Calculate local watershed area (i.e., watershed area per skeleton section)
-    # on skeleton nodes.
-    node_lwa = np.zeros(node_dl.shape)
+    # and local watershed integrals on skeleton nodes.
+    node_lwa = np.zeros(nn)
+    node_lwi = np.zeros((nn, nv))
     for i in range(len(node_sections)):
         # Only non-empty sections.
         if np.sum(skl_sections == i) > 0:
@@ -263,10 +99,14 @@ def metrics2(x, y, mask, node_sections, node_dl, skl_xy, skl_sections, skl_dl):
             # strip area of all skeleton section points. The result is cumulated
             # at confluence points.
             node_lwa[node_sections[i, 0]] += np.sum(skl_wsa[ind])
+            for j in range(nv):
+                node_lwi[node_sections[i, 0], j] += np.sum(skl_wsi[ind, j])
             # Upstream node (if channel head): local watershed area is watershed
             # strip area of most upstream skeleton section point.
             if np.sum(node_sections == node_sections[i, 1]) == 1:
                 node_lwa[node_sections[i, 1]] = skl_wsa[ind][-1]
+                for j in range(nv):
+                    node_lwi[node_sections[i, 1], j] = skl_wsi[ind, j][-1]
             # Upstream node (if split point): local watershed area is watershed
             # strip area of most upstream skeleton section point. The split
             # point is the upstream node in two channel sections. Watershed
@@ -275,29 +115,47 @@ def metrics2(x, y, mask, node_sections, node_dl, skl_xy, skl_sections, skl_dl):
             # area.
             if np.sum(node_sections == node_sections[i, 1]) == 2:
                 node_lwa[node_sections[i, 1]] += skl_wsa[ind][-1]
+                for j in range(nv):
+                    node_lwi[node_sections[i, 1], j] += skl_wsi[ind, j][-1]
 
     # Calculate metrics on skeleton nodes.
-    # Initialize watershed area to local watershed area.
+    # Initialize watershed area (integrals) to local watershed area (integrals).
     node_wa = node_lwa
-    # Initialize upstream length to zero.
-    node_ul = np.zeros(node_dl.shape)
+    node_wi = node_lwi
+    # Initialize maximum and total upstream lengths to zero.
+    node_mul = np.zeros(nn)
+    node_tul = np.zeros(nn)
     # Loop over skeleton sections in decreasing order of their upstream node
     # downstream length.
     for i in np.argsort(-node_dl[node_sections[:, 1]]):
         # Channel section nodes.
         n0 = node_sections[i, 0]
         n1 = node_sections[i, 1]
-        # If not a channel head, propagate upstream watershed area downstream.
+        # If not a channel head, propagate upstream watershed area (integrals)
+        # downstream.
         if np.sum(node_sections == n1) > 1:
             node_wa[n0] += node_wa[n1]
-        # Propagate upstream length downstream.
-        ul = node_ul[n1] + node_dl[n1] - node_dl[n0]
-        if ul > node_ul[n0]:
-            node_ul[n0] = ul
+            for j in range(nv):
+                node_wi[n0, j] += node_wi[n1, j]
+        # Propagate maximum upstream length downstream.
+        mul = node_mul[n1] + node_dl[n1] - node_dl[n0]
+        if mul > node_mul[n0]:
+            node_mul[n0] = mul
+        # Propagate total upstream length downstream.
+        tul = node_tul[n1] + node_dl[n1] - node_dl[n0]
+        node_tul[n0] += tul
+
+    # Divide integrals by watershed area.
+    node_v = np.zeros((nn, nv))
+    for i in range(nv):
+        ind = node_wa > 0
+        node_v[ind, i] = node_wi[ind, i] / node_wa[ind]
 
     # Calculate metrics on skeleton points.
-    skl_wa = np.zeros(skl_dl.shape)
-    skl_ul = np.zeros(skl_dl.shape)
+    skl_wa = np.zeros(ns)
+    skl_wi = np.zeros((ns, nv))
+    skl_mul = np.zeros(ns)
+    skl_tul = np.zeros(ns)
     for i in np.unique(skl_sections):
         # Skeleton point indices (upstream to downstream).
         points = np.flip(np.argwhere(skl_sections == i)[:, 0])
@@ -307,6 +165,24 @@ def metrics2(x, y, mask, node_sections, node_dl, skl_xy, skl_sections, skl_dl):
             # Upstream channel section node index.
             n1 = node_sections[i, 1]
             skl_wa[n] = node_wa[n1] + np.sum(skl_wsa[points[:j]])
-            skl_ul[n] = node_ul[n1] + node_dl[n1] - skl_dl[n]
+            for k in range(nv):
+                skl_wi[n, k] = node_wi[n1, k] + np.sum(skl_wsi[points[:j], k])
+            skl_mul[n] = node_mul[n1] + node_dl[n1] - skl_dl[n]
+            skl_tul[n] = node_tul[n1] + node_dl[n1] - skl_dl[n]
 
-    return skl_wa, skl_ul
+    # Divide integrals by watershed area.
+    skl_v = np.zeros((ns, nv))
+    for i in range(nv):
+        ind = skl_wa > 0
+        skl_v[ind, i] = skl_wi[ind, i] / skl_wa[ind]
+
+    # Reshape node_v and skl_v, if needed.
+    if nv == 1:
+        node_v = node_v.reshape(-1)
+        skl_v = skl_v.reshape(-1)
+
+    if nv == 0:
+        return node_wa, node_mul, node_tul, skl_wa, skl_mul, skl_tul
+    else:
+        return (node_wa, node_mul, node_tul, node_v, skl_wa, skl_mul, skl_tul,
+                skl_v)
