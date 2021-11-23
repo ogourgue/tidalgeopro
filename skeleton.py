@@ -150,7 +150,7 @@ def final_skeleton(skls, mpol, ls, dx, buf = 1e-6):
         boundary.
 
     Args:
-        skls (list of MultiLineStrings): Raw skeleton.
+        skls (list of MultiLineStrings): Clean skeleton.
         mpol (MultiPolygon): Tidal channel network.
         ls (LineString): Downstream boundary.
         dx (float): Distance between two points of the final skeleton.
@@ -205,18 +205,26 @@ def final_skeleton(skls, mpol, ls, dx, buf = 1e-6):
             d1 = p1.distance(dls)
             # Connection to first node.
             if d0 == d[i]:
-                p2 = dls.interpolate(dls.project(p0))
-                ls = shp.geometry.LineString([p0, p2])
-                if ls.within(mpol.buffer(buf)):
-                    lss.append(ls)
+                # Already connected if distance is zero.
+                if d0 < buf:
                     break
+                else:
+                    p2 = dls.interpolate(dls.project(p0))
+                    ls = shp.geometry.LineString([p0, p2])
+                    if ls.within(mpol.buffer(buf)):
+                        lss.append(ls)
+                        break
             # Connection to second node.
             elif d1 == d[i]:
-                p2 = dls.interpolate(dls.project(p1))
-                ls = shp.geometry.LineString([p1, p2])
-                if ls.within(mpol.buffer(buf)):
-                    lss.append(ls)
+                # Already connected if distance is zero.
+                if d1 < buf:
                     break
+                else:
+                    p2 = dls.interpolate(dls.project(p1))
+                    ls = shp.geometry.LineString([p1, p2])
+                    if ls.within(mpol.buffer(buf)):
+                        lss.append(ls)
+                        break
             # Connection to a middle point.
             else:
                 p2, p3 = shp.ops.nearest_points(dls, lss[i])
