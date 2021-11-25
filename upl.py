@@ -1,7 +1,7 @@
 """ Unchanneled Path Length.
 
 Compute the unchanneled path length (UPL), i.e., the shortest distance to a
-    channel node.
+    channel node (triangular grids).
 
 Author: Olivier Gourgue (University of Antwerp & Boston University).
 
@@ -23,6 +23,9 @@ def upl(x, y, chn, mask = None):
         chn (NumPy array, boolean): True for channel nodes, False otherwise, for
             one (1D array) or several time steps (2D array, second dimension for
             time).
+        mask (NumPy array, boolean): True at grid nodes where UPL is not
+            computed (same shape as chn for one time step; default to None, that
+            is, no mask).
 
     Returns:
         NumPy array: Unchanneled path length (same shape as chn).

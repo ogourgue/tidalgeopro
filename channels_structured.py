@@ -1,4 +1,4 @@
-""" Channels_structured.
+""" Channels (structured).
 
 Extract tidal channels from digital elevation maps (rectangular "raster" grids).
 
