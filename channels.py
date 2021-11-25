@@ -1,6 +1,6 @@
 """ Channels.
 
-Extract tidal channels from digital elevation maps.
+Extract tidal channels from digital elevation maps (triangular grids).
 
 Author: Olivier Gourgue (University of Antwerp & Boston University)
 
