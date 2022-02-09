@@ -21,7 +21,8 @@ def watersheds(x, y, node_sections, node_dl, skl_xy, skl_sections, skl_dl,
     Args:
         x (NumPy array, shape (M)): Structured grid x-coordinates.
         y (NumPy array, shape (N)): Structured grid y-coordinates.
-        node_sections (Numpy array): Skeleton section indices at skeleton nodes.
+        node_sections (Numpy array): Skeleton node indices for skeleton
+            sections.
         node_dl (Numpy array): Downstream length at skeleton nodes.
         skl_xy (NumPy array): Skeleton point coordinates.
         skl_sections (NumPy array): Skeleton section indices at skeleton points.
