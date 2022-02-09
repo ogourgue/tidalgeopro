@@ -159,7 +159,7 @@ def final_skeleton(skls, mpol, ls, dx, buf = 1e-6):
 
     Returns:
         NumPy array: Skeleton node coordinates.
-        Numpy array: Skeleton node indices for skeleton sections.
+        Numpy array: Skeleton node indices at skeleton sections.
         Numpy array: Downstream length at skeleton nodes.
         NumPy array: Skeleton point coordinates.
         NumPy array: Skeleton section indices at skeleton points.
@@ -364,14 +364,13 @@ def donwstream_length(node_xy, node_sections, lss, dns):
 
     Args:
         node_xy (NumPy array): Skeleton node coordinates.
-        node_sections (Numpy array): Skeleton node indices for skeleton
-            sections.
+        node_sections (Numpy array): Skeleton node indices at skeleton sections.
         lss (List of LineStrings): Skeleton sections.
         dns (List of int): List of downstream skeleton section indices.
 
     Returns:
         NumPy array: Skeleton node coordinates.
-        Numpy array: Skeleton node indices for skeleton sections.
+        Numpy array: Skeleton node indices at skeleton sections.
         Numpy array: Downstream length at skeleton nodes.
         List of LineStrings: Skeleton sections.
     """
