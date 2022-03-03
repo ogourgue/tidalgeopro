@@ -1,6 +1,6 @@
-""" Strahler.
+""" Stream orders.
 
-Compute the Strahler stream order along the skeleton of a tidal channel network.
+Compute stream orders along the skeleton of a tidal channel network.
 
 Author: Olivier Gourgue (University of Antwerp)
 
@@ -10,10 +10,17 @@ Author: Olivier Gourgue (University of Antwerp)
 import numpy as np
 
 ################################################################################
-# Stream orders. ###############################################################
+# Hack. ########################################################################
 ################################################################################
 
-def stream_orders(node_sections, dns):
+def hack():
+    print('To do.')
+
+################################################################################
+# Strahler. ####################################################################
+################################################################################
+
+def strahler(node_sections, dns):
     """Compute Strahler stream orders along skeleton.
 
     Only tested for non-braided rivers.
