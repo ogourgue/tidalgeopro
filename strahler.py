@@ -44,7 +44,7 @@ def stream_orders(node_sections, dns):
 
         # If a node is only connected to one section and is not a downstream
         # node, its order is 1.
-        if (np.sum(node_sections == i) == 1) and i not in (dns):
+        if (np.sum(node_sections == i) == 1) and i not in dns:
 
             # Section index.
             s = np.where(node_sections == i)[0][0]
@@ -68,8 +68,9 @@ def stream_orders(node_sections, dns):
             # Connected sections.
             con = np.where(node_sections == i)[0]
 
-            # If a node has only one connected section with no stream order.
-            if np.sum(so[con] == 0) == 1:
+            # If a node has only one connected section with no stream order and
+            # is not a downstream node.
+            if np.sum(so[con] == 0) == 1 and i not in dns:
 
                 # Maximum stream order along connected sections.
                 so_max = np.max(so[con])
@@ -79,6 +80,7 @@ def stream_orders(node_sections, dns):
                 if np.sum(so[con] == so_max) == 1:
                     so[con[so[con] == 0][0]] = so_max
                     nc += 1
+
 
                 # If several connected sections with maximum stream order, then
                 # a higher stream order is propagated.

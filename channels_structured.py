@@ -57,7 +57,7 @@ def mna(ws, z):
         for j in range(ny):
             j0 = np.maximum(0, j - r)
             j1 = np.minimum(j + r, ny) + 1
-            z_med[i, j, :] = np.median(z[i0:i1, j0:j1, :], axis = [0, 1])
+            z_med[i, j, :] = np.nanmedian(z[i0:i1, j0:j1, :], axis = [0, 1])
 
     # Mini-cloud residuals.
     z_res = z_med - z
