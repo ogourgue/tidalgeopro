@@ -13,8 +13,97 @@ import numpy as np
 # Hack. ########################################################################
 ################################################################################
 
-def hack():
-    print('To do.')
+def hack(node_sections, node_mul, dns):
+    """Compute Strahler stream orders along skeleton.
+
+    Args:
+        node_sections (NumPy array): Skeleton node indices at skeleton sections.
+        node_mul (NumPy array): Maximum upstream length at skeleton nodes.
+        dns (list of int): Downstream node indices.
+
+    Returns:
+        NumPy array: Hack stream order at skeleton sections.
+    """
+
+    # Number of sections.
+    ns = node_sections.shape[0]
+
+    # Number of nodes.
+    nn = np.max(node_sections) + 1
+
+    # Initialize stream order array.
+    so = np.zeros(ns, dtype = int)
+
+    ################
+    # First order. #
+    ################
+
+    # Initialize list of new sections (sections with updated stream order).
+    new = []
+
+    # Loop over downstream nodes.
+    for n in dns:
+
+        # If a section is connected to a downstream node, its order is 1.
+        s = np.where(node_sections == n)[0][0]
+
+        # Stream order.
+        so[s] = 1
+
+        # Update list of new sections.
+        new.append(s)
+
+    #################
+    # Higher order. #
+    #################
+
+    # As long as the stream order array contains zeros.
+    while np.sum(so == 0) > 0:
+
+        # Initialize list of old sections (new sections in the previous loop).
+        old = new.copy()
+
+        # Initialize list of new sections.
+        new = []
+
+        # Loop over old sections.
+        for s in old:
+
+            # List connected upstream sections.
+            con = list(np.where(node_sections == node_sections[s, 1])[0])
+            con.remove(s)
+
+            # If only one connected section, its order is the same as
+            # downstream.
+            if len(con) == 1:
+                so[con[0]] = so[s]
+
+            else:
+
+                # Max. upstream length of the connected section upstream nodes.
+                mul = node_mul[node_sections[con, 1]]
+
+                # Loop over the connected sections.
+                for i in range(len(con)):
+
+                    # If it the connected section with the highest max. upstream
+                    # length, its order is the same as downstream.
+                    if i == np.argmax(mul):
+                        so[con[i]] = so[s]
+
+                    # Otherwise, the order increases by 1.
+                    else:
+                        so[con[i]] = so[s] + 1
+
+            # Update list of new sections.
+            for ss in con:
+                new.append(ss)
+
+        # End loop if there is no new sections.
+        if len(new) == 0:
+            break
+
+    return so
 
 ################################################################################
 # Strahler. ####################################################################
@@ -23,10 +112,10 @@ def hack():
 def strahler(node_sections, dns):
     """Compute Strahler stream orders along skeleton.
 
-    Only tested for non-braided rivers.
+    Only tested for non-braided channel networks.
 
     Args:
-        node_sections (Numpy array): Skeleton node indices at skeleton sections.
+        node_sections (NumPy array): Skeleton node indices at skeleton sections.
         dns (list of int): Downstream node indices.
 
     Returns:
