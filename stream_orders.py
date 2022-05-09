@@ -109,13 +109,12 @@ def hack(node_sections, node_mul, dns):
 # Strahler. ####################################################################
 ################################################################################
 
-def strahler(node_sections, dns):
+def strahler(node_sections, node_dl, dns):
     """Compute Strahler stream orders along skeleton.
-
-    Only tested for non-braided channel networks.
 
     Args:
         node_sections (NumPy array): Skeleton node indices at skeleton sections.
+        node_dl (NumPy array): Downstream length at skeleton nodes.
         dns (list of int): Downstream node indices.
 
     Returns:
@@ -177,16 +176,44 @@ def strahler(node_sections, dns):
                     so[con[so[con] == 0][0]] = so_max
                     nc += 1
 
-
                 # If several connected sections with maximum stream order, then
                 # a higher stream order is propagated.
                 elif np.sum(so[con] == so_max) > 1:
                     so[con[so[con] == 0][0]] = so_max + 1
                     nc += 1
 
-        # Leave the loop if nothing has changed.
+        # If nothing has changed, deal with loops (braided channels).
         if nc == 0:
-            break
+
+            # Initialize list of loop nodes.
+            loopn = []
+
+            # Loop over nodes.
+            for i in range(nn):
+
+                # Connected sections.
+                con = np.where(node_sections == i)[0]
+
+                # If a node has one connected section with a stream order and
+                # several connected sections with no stream order, update list
+                # of loop nodes.
+                if np.sum(so[con] > 0) > 0 and np.sum(so[con] == 0) > 1:
+                    loopn.append(i)
+
+            # Downstream length at loop nodes.
+            loopn_dl = node_dl[loopn]
+
+            # Loop node with maximum downstream length.
+            ind = np.argmax(loopn_dl)
+
+            # Connected sections.
+            con = np.where(node_sections == loopn[ind])[0]
+
+            # Maximum stream order along connected sections.
+            so_max = np.max(so[con])
+
+            # Propagate stream order.
+            so[con[so[con] == 0][0]] = so_max
 
     return so
 
