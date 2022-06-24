@@ -6,6 +6,8 @@ Author: Olivier Gourgue (University of Antwerp & Boston University).
 
 """
 
+import time
+
 import numpy as np
 import shapely as shp
 
