@@ -16,11 +16,15 @@ import centerline.geometry
 # Raw skeleton. ################################################################
 ################################################################################
 
-def raw_skeleton(mpol):
+def raw_skeleton(mpol, dx = .5):
     """Compute the center line of a tidal channel network.
 
     Args:
         mpol (MultiPolygon): Tidal channel network.
+        dx (float): Parameter defined in the centerline package. Densify the
+            input geometry’s border by placing additional points at this
+            distance. Note from TidalGeoPro developers: it also decreases point
+            density if larger than original density. Default to 0.5 (meter).
 
     Returns:
         List of MultiLineStrings: Raw skeleton. There is one raw skeleton
@@ -32,7 +36,7 @@ def raw_skeleton(mpol):
     # into longer LineStrings using linemerge from Shapely operations.
     skls = []
     for pol in mpol.geoms:
-        skls.append(shp.ops.linemerge(centerline.geometry.Centerline(pol)))
+        skls.append(shp.ops.linemerge(centerline.geometry.Centerline(pol, dx)))
 
     # Convert raw skeletons into MultiLineStrings if necessary.
     for i in range(len(skls)):
