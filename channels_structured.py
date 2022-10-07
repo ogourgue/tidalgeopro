@@ -173,13 +173,14 @@ def channel_polygons(x, y, chn, sc = 0):
                     break
 
             # Insert interiors one by one to avoid inserting interior interiors.
-            if len(pols) == 0:
+            if len(pols) < 2:
                 stop_while = True
             else:
                 stop_while = False
             while not stop_while:
                 stop_for = False
-                for j in range(1, len(pols)):
+                len_pols = len(pols)
+                for j in range(1, len_pols):
                     for k in range(j):
                         if pols[j].within(pols[k]):
                             # Update polygon k with interior j.
@@ -198,7 +199,7 @@ def channel_polygons(x, y, chn, sc = 0):
                     if stop_for:
                         break
                 # Stop while-loop.
-                if j == len(pols) - 1 and k == j - 1:
+                if j == len_pols - 1 and k == j - 1:
                     stop_while = True
 
         # Update list of channel network MultiPolygons.
