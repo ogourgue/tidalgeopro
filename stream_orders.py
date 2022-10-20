@@ -13,12 +13,13 @@ import numpy as np
 # Hack. ########################################################################
 ################################################################################
 
-def hack(node_sections, node_mul, dns):
+def hack(node_sections, node_mul, node_dl, dns):
     """Compute Strahler stream orders along skeleton.
 
     Args:
         node_sections (NumPy array): Skeleton node indices at skeleton sections.
         node_mul (NumPy array): Maximum upstream length at skeleton nodes.
+        node_dl (NumPy array): Downstream length at skeleton nodes.
         dns (list of int): Downstream node indices.
 
     Returns:
@@ -80,15 +81,27 @@ def hack(node_sections, node_mul, dns):
 
             else:
 
-                # Max. upstream length of the connected section upstream nodes.
-                mul = node_mul[node_sections[con, 1]]
+                # Upstream, downstream node indices of the connected sections.
+                up = node_sections[con, 1]
+                down = node_sections[con, 0]
+
+                # Maximum upstream length at the upstream node of the connected
+                # sections.
+                mul_up = node_mul[up]
+
+                # Length of the connected sections.
+                length = node_dl[up] - node_mul[down]
+
+                # Maximum upstream length at the downstream node of the
+                # connected sections.
+                mul_down = mul_up + length
 
                 # Loop over the connected sections.
                 for i in range(len(con)):
 
-                    # If it the connected section with the highest max. upstream
-                    # length, its order is the same as downstream.
-                    if i == np.argmax(mul):
+                    # If it is the connected section with the highest maximum
+                    # upstream length, its order is the same as downstream.
+                    if i == np.argmax(mul_down):
                         so[con[i]] = so[s]
 
                     # Otherwise, the order increases by 1.
