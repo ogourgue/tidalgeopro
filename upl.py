@@ -48,6 +48,10 @@ def upl(x, y, chn, mask = None):
     if mask is None:
         mask = np.zeros((n, 1), dtype = bool)
 
+    # Reshape mask as a 2D array, if needed.
+    if mask.ndim == 1:
+        mask = mask.reshape((-1, 1))
+
     # Area of interest.
     not_mask = np.logical_not(mask)
 
@@ -55,11 +59,11 @@ def upl(x, y, chn, mask = None):
     for i in range(nt):
 
         # Channel node indices and coordinates.
-        ind_chn = np.flatnonzero(chn[:, i] * not_mask)
+        ind_chn = np.flatnonzero(chn[:, i] * not_mask[:, i])
         xy_chn = np.array([x[ind_chn], y[ind_chn]]).T
 
         # Platform node indices and coordinates.
-        ind_plt = np.flatnonzero(np.logical_not(chn[:, i]) * not_mask)
+        ind_plt = np.flatnonzero(np.logical_not(chn[:, i]) * not_mask[:, i])
         xy_plt = np.array([x[ind_plt], y[ind_plt]]).T
 
         # UPL.
