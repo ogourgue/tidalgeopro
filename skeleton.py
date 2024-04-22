@@ -9,7 +9,7 @@ Author: Olivier Gourgue (University of Antwerp & Boston University).
 import numpy as np
 import shapely as shp
 
-import centerline.geometry
+from centerline.geometry import Centerline
 
 
 ################################################################################
@@ -36,11 +36,11 @@ def raw_skeleton(mpol, dx = .5):
     # into longer LineStrings using linemerge from Shapely operations.
     skls = []
     for pol in mpol.geoms:
-        skls.append(shp.ops.linemerge(centerline.geometry.Centerline(pol, dx)))
+        skls.append(shp.ops.linemerge(Centerline(pol, dx).geometry))
 
     # Convert raw skeletons into MultiLineStrings if necessary.
     for i in range(len(skls)):
-        if skls[i].type == 'LineString':
+        if skls[i].geom_type == 'LineString':
             skls[i] = shp.geometry.MultiLineString([skls[i]])
 
     return skls
@@ -117,7 +117,7 @@ def clean_skeleton(skls, mpol, ratio = 1):
                         lss.append(skl.geoms[j])
                 skl = shp.ops.linemerge(shp.geometry.MultiLineString(lss))
                 # Convert skeleton into MultiLineString if necessary.
-                if skl.type == 'LineString':
+                if skl.geom_type == 'LineString':
                     skl = shp.geometry.MultiLineString([skl])
             else:
                 # Update raw skeleton.
@@ -162,7 +162,7 @@ def final_skeleton(skls, mpol, ls, dx, buf = 1e-6):
     # MultiPolygon. Buffering is needed due to rounding errors if downstream
     # LineString is on the channel network MultiPolygon boundary.
     dmls = ls.intersection(mpol.buffer(buf))
-    if dmls.type == 'LineString':
+    if dmls.geom_type == 'LineString':
         dmls = shp.geometry.MultiLineString([dmls])
 
     # Merge skeletons into one list of LineStrings.
