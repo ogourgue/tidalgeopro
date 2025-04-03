@@ -247,6 +247,55 @@ def channels(z_res, z_res_c):
 
     return chn
 
+################################################################################
+# Separate channel segments ####################################################
+################################################################################
+
+def split_contours(paths, threshold=100):
+    """ Splits contour paths into separate polygon segments based on a distance threshold.
+
+    This function is necessary for Matplotlib v3 or greater, where contour paths of the 
+    same level are automatically connected into a single path. It detects the undesired 
+    connections between distant channel contours, based on a given threshold distance 
+    (default = 100), and separates the segments.
+
+    Args:
+        paths (List): A list of Matplotlib contour paths, each containing a 
+            sequence of vertices.
+        threshold (float, optional): The distance threshold to determine disconnections 
+            between contour segments. If the distance between consecutive points exceeds 
+            this value, a new segment is started. Default is 100.
+
+    Returns:
+        polygons (List): A list of raw channel network polygons.
+    """
+    polygons = []
+
+    for contour_path in paths:
+        contour = contour_path.vertices
+        segments = []  # Store individual segments
+        current_segment = [contour[0]]
+        
+        # Loop through the contour path and detect incorrectly connected segments
+        for i in range(1, len(contour)):
+            # Check distance between two consecutive points against the threshold
+            distance = np.linalg.norm(contour[i] - contour[i-1])
+            if distance > threshold:
+                if len(current_segment) > 1:
+                    segments.append(current_segment)
+                current_segment = [contour[i]]
+            else:
+                current_segment.append(contour[i])
+        
+        # Append the last segment
+        if len(current_segment) > 1:
+            segments.append(current_segment)
+        
+        # Convert each segment to a separate Polygon
+        for segment in segments:
+            polygons.append(geometry.Polygon(segment))
+
+    return polygons
 
 ################################################################################
 # Compute channel polygons. ####################################################
@@ -293,13 +342,8 @@ def channel_polygons(x, y, tri, chn, sc = 0):
             chn_int = chn[:, i].astype(int)
             TriContourSet = plt.tricontour(x, y, tri, chn_int, levels = [.5])
 
-            # Convert to polygons.
-            for contour_path in TriContourSet.collections[0].get_paths():
-                xy = contour_path.vertices
-                coords = []
-                for j in range(xy.shape[0]):
-                    coords.append((xy[j, 0], xy[j, 1]))
-                pols.append(geometry.Polygon(coords))
+            # Split continuous contours and convert to polygons.
+            pols = split_contours(TriContourSet.get_paths())
 
             # Sort polygons by surface areas.
             s = [pol.area for pol in pols]
