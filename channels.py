@@ -254,7 +254,7 @@ def channels(z_res, z_res_c):
 def split_contours(paths, threshold=100):
     """ Splits contour paths into separate polygon segments based on a distance threshold.
 
-    This function is necessary for Matplotlib v3 or greater, where contour paths of the 
+    This function is necessary for Matplotlib v3.8 or greater, where contour paths of the 
     same level are automatically connected into a single path. It detects the undesired 
     connections between distant channel contours, based on a given threshold distance 
     (default = 100), and separates the segments.
@@ -342,8 +342,20 @@ def channel_polygons(x, y, tri, chn, sc = 0):
             chn_int = chn[:, i].astype(int)
             TriContourSet = plt.tricontour(x, y, tri, chn_int, levels = [.5])
 
-            # Split continuous contours and convert to polygons.
-            pols = split_contours(TriContourSet.get_paths())
+            # Check matplotlib version for tricontour (changes in versions > 3.8)
+            version_mpl = tuple(map(int,(matplotlib.__version__).split('.'))) 
+
+            if version_mpl > (3, 8, 0):
+                # Split continuous contours and convert to polygons (matplotlib >3.8)
+                pols = split_contours(TriContourSet.get_paths())
+            else:
+                # Convert to polygons (original version, matplotlib <3.8)
+                for contour_path in TriContourSet.collections[0].get_paths():
+                    xy = contour_path.vertices
+                    coords = []
+                    for j in range(xy.shape[0]):
+                        coords.append((xy[j, 0], xy[j, 1]))
+                    pols.append(geometry.Polygon(coords))
 
             # Sort polygons by surface areas.
             s = [pol.area for pol in pols]
